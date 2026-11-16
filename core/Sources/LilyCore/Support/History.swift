@@ -63,7 +63,10 @@ public final class History {
         guard url.scheme == "https" || url.scheme == "http" else { return }
         let title = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let time = now()
-        if let index = visits.firstIndex(where: { $0.url == url }), time.timeIntervalSince(visits[index].visitedAt) < Self.coalesceInterval {
+        // Visits are newest first: only those within the coalescing window can be updated, so the
+        // scan stops at the first older one instead of comparing every URL in history per page load.
+        let recent = visits.prefix { time.timeIntervalSince($0.visitedAt) < Self.coalesceInterval }
+        if let index = recent.firstIndex(where: { $0.url == url }) {
             var visit = visits.remove(at: index)
             visit.visitedAt = time
             if !title.isEmpty { visit.title = title }
