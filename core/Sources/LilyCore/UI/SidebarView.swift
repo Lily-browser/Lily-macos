@@ -73,6 +73,8 @@ struct NavButton: View {
     let symbol: String
     let help: String
     var enabled = true
+    var width: CGFloat = 30
+    var height: CGFloat = 28
     let action: () -> Void
     @State private var hovering = false
 
@@ -80,9 +82,11 @@ struct NavButton: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 13, weight: .semibold))
-                .frame(width: 30, height: 28)
+                .frame(width: width, height: height)
                 .background(hovering && enabled ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear),
                             in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                // The whole frame takes clicks, not only the glyph's pixels.
+                .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         }
         .buttonStyle(.plain)
         .foregroundStyle(enabled ? .secondary : .tertiary)
@@ -95,6 +99,7 @@ struct NavButton: View {
 /// Shows the active page's address; clicking it opens the command bar on that URL (⌘L).
 private struct AddressPill: View {
     let window: WindowModel
+    @AppStorage(AppearanceStyle.Key.sidebarTextSize) private var textSize = SidebarTextSize.default.rawValue
     @State private var hovering = false
     @State private var security: IdentifiedSecurity?
 
@@ -117,7 +122,7 @@ private struct AddressPill: View {
             }
             Button { window.presentCommandBar(newTab: false) } label: {
                 HStack(spacing: 7) {
-                    Text(display(url)).lineLimit(1).truncationMode(.middle).font(.system(size: 13))
+                    Text(display(url)).lineLimit(1).truncationMode(.middle).font(.system(size: SidebarTextSize(stored: textSize).titleSize))
                         .foregroundStyle(url == nil ? .tertiary : .primary)
                     Spacer(minLength: 0)
                     if window.isPrivate {
@@ -131,7 +136,7 @@ private struct AddressPill: View {
             .help("Open Location (⌘L)")
         }
         .padding(.horizontal, 10)
-        .frame(height: 32)
+        .frame(height: SidebarTextSize(stored: textSize).rowHeight + 6)
         .background(.quaternary.opacity(hovering ? 1.0 : 0.6), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
         .onHover { hovering = $0 }
     }
@@ -160,8 +165,11 @@ private struct AddressPill: View {
 private struct TabListView: View {
     @Bindable var window: WindowModel
     @AppStorage(AppearanceStyle.Key.accent) private var accent = AppearanceStyle.defaultAccent
+    /// Read once here and handed to the rows as a plain value: thousands of rows don't each observe it.
+    @AppStorage(AppearanceStyle.Key.sidebarTextSize) private var storedTextSize = SidebarTextSize.default.rawValue
 
     var body: some View {
+        let textSize = SidebarTextSize(stored: storedTextSize)
         List {
             if !window.pinnedTabs.isEmpty {
                 PinnedTabsGrid(window: window, tabs: window.pinnedTabs, activeID: window.activeID, accent: accent)
@@ -173,13 +181,13 @@ private struct TabListView: View {
                 ForEach(window.regularItems) { item in
                     switch item {
                     case .tab(let tab):
-                        TabRow(tab: tab, window: window)
+                        TabRow(tab: tab, window: window, textSize: textSize)
                             .listRowBackground(ActiveRowBackground(active: tab.id == window.activeID))
                             // Reordering stays with onMove; this lets the row also be dropped on a
                             // pinned tile, a space or a split, or into another app as its address.
                             .itemProvider { TabDrag.provider(for: tab) }
                     case .split(let layout, let members):
-                        SplitPill(layout: layout, members: members, window: window)
+                        SplitPill(layout: layout, members: members, window: window, textSize: textSize, accent: accent)
                             .listRowInsets(EdgeInsets(top: 3, leading: 6, bottom: 3, trailing: 6))
                             .listRowBackground(Color.clear)
                     }
@@ -189,11 +197,8 @@ private struct TabListView: View {
                 .onInsert(of: [.lilyTab, .url]) { row, providers in
                     Task { if let drop = await TabDrag.load(providers) { window.dropInList(drop, atRow: row) } }
                 }
-                Button { window.newTab() } label: {
-                    Label("New Tab", systemImage: "plus").foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .selectionDisabled()
+                NewTabRow(textSize: textSize) { window.newTab() }
+                    .selectionDisabled()
             }
         }
         .listStyle(.sidebar)
@@ -209,8 +214,9 @@ private struct SplitPill: View {
     let layout: SplitLayout
     let members: [WindowModel.TabItem]
     let window: WindowModel
+    let textSize: SidebarTextSize
+    let accent: String
     @State private var dropTargeted = false
-    @AppStorage(AppearanceStyle.Key.accent) private var accent = AppearanceStyle.defaultAccent
 
     var body: some View {
         let isActive = members.contains { $0.id == window.activeID }
@@ -245,11 +251,12 @@ private struct SplitPill: View {
         ForEach(tabs) { tab in
             let focused = tab.id == window.activeID
             HStack(spacing: 5) {
-                FaviconView(page: tab.url, fetch: tab.isSleeping ? nil : tab.favicon ?? tab.url?.faviconGuess, remember: !window.isPrivate, size: 14)
-                if !compact { Text(tab.title).font(.system(size: 12)).lineLimit(1).truncationMode(.tail) }
+                FaviconView(page: tab.url, fetch: tab.isSleeping ? nil : tab.favicon ?? tab.url?.faviconGuess, remember: !window.isPrivate,
+                            size: textSize.favicon - 2)
+                if !compact { Text(tab.title).font(.system(size: textSize.titleSize - 1)).lineLimit(1).truncationMode(.tail) }
             }
             .frame(maxWidth: .infinity, alignment: compact ? .center : .leading)
-            .padding(.horizontal, 7).frame(height: 26)
+            .padding(.horizontal, 7).frame(height: textSize.rowHeight)
             .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(focused ? AnyShapeStyle(Color(hex: accent).opacity(0.3)) : AnyShapeStyle(.background.opacity(0.35))))
             .contentShape(Rectangle())
@@ -263,19 +270,20 @@ private struct SplitPill: View {
 private struct TabRow: View {
     let tab: WindowModel.TabItem
     let window: WindowModel
+    let textSize: SidebarTextSize
     @State private var hovering = false
 
     var body: some View {
         HStack(spacing: 8) {
             ZStack {
                 // A sleeping or restored tab's site isn't open: its kept icon only, no request.
-                FaviconView(page: tab.url, fetch: tab.isSleeping ? nil : tab.favicon ?? tab.url?.faviconGuess, remember: !window.isPrivate, size: 16)
+                FaviconView(page: tab.url, fetch: tab.isSleeping ? nil : tab.favicon ?? tab.url?.faviconGuess, remember: !window.isPrivate, size: textSize.favicon)
                     .opacity(tab.isSleeping ? 0.45 : 1)
                     .saturation(tab.isSleeping ? 0 : 1)
                 if tab.isLoading { ProgressView().controlSize(.mini).scaleEffect(0.8) }
             }
-            .frame(width: 18)
-            Text(tab.title).lineLimit(1).truncationMode(.tail)
+            .frame(width: textSize.favicon + 2)
+            Text(tab.title).font(.system(size: textSize.titleSize)).lineLimit(1).truncationMode(.tail)
                 .foregroundStyle(tab.isSleeping ? .secondary : .primary)
                 .help(tab.isSleeping ? "Sleeping to save memory. Opens where you left off." : tab.title)
             Spacer(minLength: 0)
@@ -287,11 +295,42 @@ private struct TabRow: View {
                     .buttonStyle(.plain).foregroundStyle(.secondary).help("Close Tab (⌘W)")
             }
         }
-        .frame(height: 26)
+        .frame(height: textSize.rowHeight)
         .contentShape(Rectangle())
         .onTapGesture { window.activate(tab.id) }
         .onHover { hovering = $0 }
         .contextMenu { TabContextMenu(tab: tab, window: window) }
+    }
+}
+
+/// The "New Tab" row at the end of the list: the whole row is the button, not just its glyph and text.
+private struct NewTabRow: View {
+    let textSize: SidebarTextSize
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: "plus")
+                    .font(.system(size: textSize.titleSize - 2, weight: .semibold))
+                    .frame(width: textSize.favicon + 2)
+                Text("New Tab").font(.system(size: textSize.titleSize))
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(.secondary)
+            .frame(height: textSize.rowHeight)
+            // Drawn a little past the content so it lines up with the active tab's highlight.
+            .background {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(hovering ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear))
+                    .padding(.horizontal, -4)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("New Tab (⌘T)")
+        .onHover { hovering = $0 }
     }
 }
 
@@ -321,6 +360,7 @@ private struct SidebarFooter: View {
                     .padding(.horizontal, 8).frame(height: 28)
                     .background(window.showsAssistant ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear),
                                 in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
             }
             .buttonStyle(.plain)
             .foregroundStyle(window.showsAssistant ? .primary : .secondary)
@@ -334,7 +374,7 @@ private struct SidebarFooter: View {
             if window.canReopenClosed {
                 NavButton(symbol: "arrow.uturn.backward", help: "Reopen Closed Tab (⇧⌘T)") { window.reopenClosed() }
             }
-            NavButton(symbol: "plus", help: "New Tab (⌘T)") { window.newTab() }
+            NavButton(symbol: "plus", help: "New Tab (⌘T)", width: 32, height: 30) { window.newTab() }
         }
     }
 }
@@ -345,12 +385,13 @@ private struct SidebarFooter: View {
 private struct SpaceHeader: View {
     let space: Space
     let window: WindowModel
+    @AppStorage(AppearanceStyle.Key.sidebarTextSize) private var textSize = SidebarTextSize.default.rawValue
     @State private var editing = false
 
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: space.symbol).foregroundStyle(Color(hex: space.color)).font(.system(size: 11, weight: .semibold))
-            Text(space.name).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+            Text(space.name).font(.system(size: SidebarTextSize(stored: textSize).headerSize, weight: .semibold)).foregroundStyle(.secondary)
             if space.hasSeparateLogins {
                 Image(systemName: "person.badge.key.fill").font(.system(size: 10)).foregroundStyle(.secondary)
                     .help("Separate logins: this space has its own cookies and site data")
@@ -378,7 +419,9 @@ private struct SpaceSwitcher: View {
     var body: some View {
         HStack(spacing: 4) {
             ForEach(window.spaces) { space in SpaceSwitcherButton(space: space, window: window) }
-            Button { adding = true } label: { Image(systemName: "plus").font(.system(size: 10, weight: .bold)).frame(width: 20, height: 20) }
+            Button { adding = true } label: {
+                Image(systemName: "plus").font(.system(size: 10, weight: .bold)).frame(width: 20, height: 20).contentShape(Circle())
+            }
                 .buttonStyle(.plain).foregroundStyle(.secondary).help("New Space")
                 .popover(isPresented: $adding) {
                     SpaceEditor(space: Space(name: "", symbol: Space.symbols.randomElement() ?? "circle.fill",
@@ -406,6 +449,7 @@ private struct SpaceSwitcherButton: View {
                 .background(current || dropTargeted ? Color(hex: space.color).opacity(dropTargeted ? 0.35 : 0.18) : .clear, in: Circle())
                 .scaleEffect(dropTargeted ? 1.2 : 1)
                 .animation(.spring(response: 0.25, dampingFraction: 0.7), value: dropTargeted)
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .help(space.name)

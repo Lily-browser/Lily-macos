@@ -163,6 +163,7 @@ struct AppearanceSettingsView: View {
     @AppStorage(AppearanceStyle.Key.sidebarTint) private var tint = AppearanceStyle.defaultAccent
     @AppStorage(AppearanceStyle.Key.tintStrength) private var strength = 0.12
     @AppStorage(AppearanceStyle.Key.grain) private var grain = 0.0
+    @AppStorage(AppearanceStyle.Key.sidebarTextSize) private var textSize = SidebarTextSize.default.rawValue
 
     var body: some View {
         Form {
@@ -172,6 +173,12 @@ struct AppearanceSettingsView: View {
             .pickerStyle(.segmented)
             .frame(width: 260)
             .onChange(of: mode) { _, _ in AppearanceStyle.applyAppAppearance() }
+
+            Picker("Sidebar text size:", selection: $textSize) {
+                ForEach(SidebarTextSize.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 260)
 
             LabeledContent("Accent color:") { swatches($accent) }
             LabeledContent("Sidebar color:") { swatches($tint) }
@@ -204,6 +211,7 @@ struct AppearanceSettingsView: View {
                 Button("Restore Defaults") {
                     accent = AppearanceStyle.defaultAccent; tint = AppearanceStyle.defaultAccent; strength = 0.12; grain = 0
                     mode = AppearanceStyle.Mode.system.rawValue; AppearanceStyle.applyAppAppearance()
+                    textSize = SidebarTextSize.default.rawValue
                 }
             }
         }
