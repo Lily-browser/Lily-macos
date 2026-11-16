@@ -35,6 +35,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
     private var littleCascade: NSPoint?
     private var settingsWindow: SettingsWindowController?
     private var saveScheduled = false
+    /// The main window's tabs as last loaded or captured for saving. When that window is closed
+    /// while Lily keeps running, the next main window starts from it instead of empty (an empty
+    /// window would otherwise save over the real session a moment later).
+    private var lastSession: SessionStore.Session?
+    /// Set once quitting has begun: the quit itself saves the session, and nothing after it may.
+    private var terminating = false
 
     public override init() { super.init() }
 
@@ -131,6 +137,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         }
         let args = ProcessInfo.processInfo.arguments.dropFirst().filter { !$0.hasPrefix("-") }
         if Preferences.restoresSession, let session = await sessionStore.load(), !session.tabs.isEmpty {
+            lastSession = session
             controller.tabs.restore(session)
         }
         for arg in args {
@@ -153,10 +160,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
     /// The encrypted session save is async, so quitting waits for it.
     public func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         assistant?.cancelAll()
-        guard let primary = primaryWindow, let sessionStore else { return .terminateNow }
-        let session = primary.tabs.session
+        guard let sessionStore else { return .terminateNow }
+        // The main window's tabs now; with it closed, what it last held (saved again only if the
+        // close-time save hasn't landed yet: an unchanged session isn't rewritten).
+        let session = primaryWindow.map(captureSession) ?? lastSession
+        terminating = true
         Task {
-            await sessionStore.save(session)
+            if let session { await sessionStore.save(session) }
             if Preferences.flag(Preferences.Key.clearHistoryOnQuit, default: false) {
                 history?.clear()
                 formDrafts?.removeAll()
@@ -187,14 +197,16 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         alert.buttons.first?.hasDestructiveAction = true
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         let alsoSites = forgetSites.state == .on
+        // At once: a main window opened before the Task runs must not bring the cleared session back.
+        lastSession = nil
         Task {
+            await sessionStore.clear()
             await factory.removeAllWebsiteData()
             DownloadManager.shared.clearFinished()
             if alsoSites {
                 siteSettings.removeAll()
                 await siteSettings.flush()
             }
-            await sessionStore.clear()
             history.clear()
             await history.flush()
             formDrafts.removeAll()
@@ -260,7 +272,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
 
     /// Like Safari: the page opens as a new, active tab in the main window, which comes forward.
     func continueBrowsing(_ url: URL) {
-        let main = primaryWindow ?? makeWindow()
+        let main = primaryWindow ?? makePrimaryWindow().controller
         main.tabs.create(url: url)
         main.showWindow(nil)
         main.window?.makeKeyAndOrderFront(nil)
@@ -282,7 +294,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
                 openLittle(url)
                 continue
             }
-            let main = target ?? primaryWindow ?? makeWindow()
+            let main = target ?? primaryWindow ?? makePrimaryWindow().controller
             target = main
             if url.isFileURL { main.tabs.openFile(url) } else { main.tabs.create(url: url) }
         }
@@ -292,12 +304,24 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
     /// The saved session belongs to the first regular window (not private, not Little Lily).
     private var primaryWindow: BrowserWindowController? { windows.first { !$0.isPrivate && !$0.isLittle } }
 
-    /// The main window for Little Lily to hand pages to; made (empty) if there isn't one.
+    /// The main window for Little Lily to hand pages to; made (with the last session) if there isn't one.
     private func mainWindowForLittle() -> BrowserWindowController {
         if let primary = primaryWindow { return primary }
-        let controller = makeWindow()
+        let controller = makePrimaryWindow().controller
         controller.showWindowCentered()
         return controller
+    }
+
+    /// A new regular window. When it becomes the main window after the previous one was closed
+    /// (Lily kept running), it gets that window's tabs, spaces and splits back before it's shown and
+    /// before anything can save, rather than starting empty and overwriting the saved session.
+    /// `restored` is false when it starts empty.
+    private func makePrimaryWindow() -> (controller: BrowserWindowController, restored: Bool) {
+        let session = launched && !terminating && primaryWindow == nil && Preferences.restoresSession ? lastSession : nil
+        let controller = makeWindow()
+        guard let session, !session.tabs.isEmpty else { return (controller, false) }
+        controller.tabs.restore(session)
+        return (controller, !controller.tabs.tabs.isEmpty)
     }
 
     /// A Little Lily window for `url`, or the one already showing it, brought forward.
@@ -332,7 +356,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
     }
 
     func openInNewWindow(_ url: URL, isPrivate: Bool) {
-        let controller = makeWindow(isPrivate: isPrivate)
+        let controller = isPrivate ? makeWindow(isPrivate: true) : makePrimaryWindow().controller
         controller.tabs.create(url: url)
         controller.showWindowCentered()
     }
@@ -352,13 +376,19 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         panel.canChooseDirectories = false
         panel.message = "Choose files to open in Lily"
         guard panel.runModal() == .OK else { return }
-        let target = (NSApp.keyWindow?.windowController as? BrowserWindowController) ?? primaryWindow ?? makeWindow()
+        let target = (NSApp.keyWindow?.windowController as? BrowserWindowController) ?? primaryWindow ?? makePrimaryWindow().controller
         panel.urls.forEach { target.tabs.openFile($0) }
         target.showWindow(nil)
     }
 
+    /// ⌘N, and clicking the Dock icon with no window open. With the main window closed, this one
+    /// is the main window again, with its tabs back.
     @objc public func newWindow(_ sender: Any?) {
-        let controller = makeWindow()
+        let (controller, restored) = makePrimaryWindow()
+        if restored {
+            controller.showWindowCentered()
+            return
+        }
         controller.tabs.create(url: nil)
         controller.showWindowCentered()
         controller.newTab(nil)
@@ -420,7 +450,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
 
     /// History opens pages in the frontmost regular window (never a private one).
     func openFromHistory(_ url: URL, newTab: Bool) {
-        let target = primaryWindow ?? makeWindow()
+        let target = primaryWindow ?? makePrimaryWindow().controller
         target.open(url, newTab: newTab || target.tabs.active == nil)
         target.showWindow(nil)
     }
@@ -430,7 +460,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         guard let migrationAccess else { return }
         if migrationWindow == nil {
             let model = MigrationModel(access: migrationAccess, destination: .init(bookmarks: bookmarks, history: history) { [weak self] in
-                (self?.primaryWindow ?? self?.makeWindow())?.tabs
+                (self?.primaryWindow ?? self?.makePrimaryWindow().controller)?.tabs
             })
             migrationWindow = MigrationWindowController(model: model)
         }
@@ -487,8 +517,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         controller.formDrafts = isPrivate ? nil : formDrafts
         controller.onClose = { [weak self] closed in
             guard let self else { return }
-            if self.primaryWindow === closed {
-                let session = closed.tabs.session
+            // Quitting closes windows after its own save; nothing is saved behind it.
+            if self.primaryWindow === closed, !self.terminating {
+                let session = self.captureSession(closed)
                 Task { await self.sessionStore.save(session) }
             }
             self.windows.removeAll { $0 === closed }
@@ -508,9 +539,17 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
             try? await Task.sleep(for: .seconds(2))
             guard let self else { return }
             self.saveScheduled = false
-            guard let primary = self.primaryWindow, let sessionStore = self.sessionStore else { return }
-            await sessionStore.save(primary.tabs.session)
+            // Once quitting has begun its save is the last word; a later one could hold torn-down tabs.
+            guard !self.terminating, let primary = self.primaryWindow, let sessionStore = self.sessionStore else { return }
+            await sessionStore.save(self.captureSession(primary))
         }
+    }
+
+    /// The main window's session, remembered for a main window opened after this one closes.
+    private func captureSession(_ primary: BrowserWindowController) -> SessionStore.Session {
+        let session = primary.tabs.session
+        lastSession = session
+        return session
     }
 }
 

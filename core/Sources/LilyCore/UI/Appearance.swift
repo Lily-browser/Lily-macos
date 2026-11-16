@@ -10,6 +10,7 @@ enum AppearanceStyle {
         static let tintStrength = "AppearanceTintStrength"
         static let grain = "AppearanceGrain"
         static let appAppearance = "AppearanceMode"
+        static let sidebarTextSize = "AppearanceSidebarTextSize"
     }
 
     static let defaultAccent = "#5B4CF5"
@@ -30,6 +31,47 @@ enum AppearanceStyle {
         case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
         }
     }
+}
+
+/// Settings → Appearance → Sidebar text size: tab titles, split pills, the space name and the
+/// address. Rows and favicons grow with the text so the list keeps its rhythm.
+enum SidebarTextSize: String, CaseIterable, Sendable {
+    case small, medium, large
+
+    static let `default` = SidebarTextSize.medium
+
+    /// The stored choice; anything unknown falls back to the default.
+    init(stored: String) { self = SidebarTextSize(rawValue: stored) ?? .default }
+
+    var label: String { rawValue.capitalized }
+
+    /// Tab titles; split pill titles are one point smaller.
+    var titleSize: CGFloat {
+        switch self {
+        case .small: return 13
+        case .medium: return 15
+        case .large: return 17
+        }
+    }
+
+    var rowHeight: CGFloat {
+        switch self {
+        case .small: return 26
+        case .medium: return 30
+        case .large: return 34
+        }
+    }
+
+    var favicon: CGFloat {
+        switch self {
+        case .small: return 16
+        case .medium: return 18
+        case .large: return 20
+        }
+    }
+
+    /// The space name above the tabs.
+    var headerSize: CGFloat { titleSize - 1 }
 }
 
 extension Color {

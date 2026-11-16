@@ -1,6 +1,6 @@
 import Foundation
 
-/// Persists the window session (open tabs) encrypted at rest; see `SealedFile`. Tab URLs can carry
+/// Persists the window session (open tabs, spaces and split groups) encrypted at rest; see `SealedFile`. Tab URLs can carry
 /// tokens in their query strings, so they never touch disk in plaintext.
 public actor SessionStore {
     public struct Session: Codable, Sendable, Equatable {
@@ -21,10 +21,66 @@ public actor SessionStore {
             }
         }
 
+        /// A split group, by position in `tabs`.
+        public struct SavedSplit: Codable, Sendable, Equatable {
+            public var layout: SplitLayout
+            /// Indices into `Session.tabs`, in pane order.
+            public var tabs: [Int]
+            public var scrollLinked: Bool
+
+            public init(layout: SplitLayout, tabs: [Int], scrollLinked: Bool = false) {
+                self.layout = layout
+                self.tabs = tabs
+                self.scrollLinked = scrollLinked
+            }
+
+            private enum CodingKeys: String, CodingKey { case layout, tabs, scrollLinked }
+
+            /// A layout this version doesn't know (saved by a newer Lily) falls back to one that fits
+            /// the members, instead of failing the whole session's decoding.
+            public init(from decoder: any Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                tabs = try container.decode([Int].self, forKey: .tabs)
+                scrollLinked = try container.decodeIfPresent(Bool.self, forKey: .scrollLinked) ?? false
+                let raw = try container.decodeIfPresent(String.self, forKey: .layout) ?? ""
+                layout = SplitLayout(rawValue: raw) ?? (tabs.count >= 4 ? .grid : tabs.count == 3 ? .threeColumns : .twoColumns)
+            }
+        }
+
         public var tabs: [Entry]
         public var activeIndex: Int?
         public var spaces: [Space]?
         public var currentSpace: UUID?
+        /// Optional so sessions saved before split groups were kept still decode.
+        public var splits: [SavedSplit]?
+
+        public init(tabs: [Entry], activeIndex: Int? = nil, spaces: [Space]? = nil, currentSpace: UUID? = nil, splits: [SavedSplit]? = nil) {
+            self.tabs = tabs
+            self.activeIndex = activeIndex
+            self.spaces = spaces
+            self.currentSpace = currentSpace
+            self.splits = splits
+        }
+
+        private enum CodingKeys: String, CodingKey { case tabs, activeIndex, spaces, currentSpace, splits }
+
+        /// Split groups decode one by one: a malformed group is dropped (as is a malformed list of
+        /// them), never the whole session, since a session that fails to decode is deleted.
+        public init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            tabs = try container.decode([Entry].self, forKey: .tabs)
+            activeIndex = try container.decodeIfPresent(Int.self, forKey: .activeIndex)
+            spaces = try container.decodeIfPresent([Space].self, forKey: .spaces)
+            currentSpace = try container.decodeIfPresent(UUID.self, forKey: .currentSpace)
+            let lossy = try? container.decodeIfPresent([Lossy<SavedSplit>].self, forKey: .splits)
+            splits = lossy.map { $0.compactMap(\.value) }
+        }
+
+        /// One element that decodes to nil instead of failing its array.
+        private struct Lossy<Value: Decodable>: Decodable {
+            let value: Value?
+            init(from decoder: any Decoder) throws { value = try? Value(from: decoder) }
+        }
     }
 
     private let file: SealedFile

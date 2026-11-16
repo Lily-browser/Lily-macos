@@ -131,17 +131,20 @@ public final class WindowModel {
     /// ⌘T opens an empty bar for a new tab; ⌘L (or clicking the address) edits the current tab's URL.
     func presentCommandBar(newTab: Bool) {
         let seed = newTab ? "" : (activeTab?.url?.absoluteString ?? "")
+        commandBar?.close()
         commandBar = CommandBarModel(newTab: newTab, query: seed, window: self)
         Haptics.tap()
     }
 
     /// ⌘K: tabs, history and bookmarks plus every browser command, space and extension.
     func presentCommandPalette() {
+        commandBar?.close()
         commandBar = CommandBarModel(newTab: false, query: "", window: self, palette: true)
         Haptics.tap()
     }
 
     func dismissCommandBar() {
+        commandBar?.close()
         commandBar = nil
         controller?.focusActivePage()
     }
