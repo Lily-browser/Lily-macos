@@ -6,3 +6,7 @@ build/
 
 # Local research artifacts
 dia-resources-evidence.json
+
+# Claude Code local state
+.claude/worktrees/
+.claude/settings.local.json
