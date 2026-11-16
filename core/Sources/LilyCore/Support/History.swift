@@ -19,7 +19,10 @@ public final class History {
     static let coalesceInterval: TimeInterval = 30 * 60
 
     /// Most recent first.
-    public private(set) var visits: [Visit] = [] { didSet { searchText = nil } }
+    public private(set) var visits: [Visit] = [] { didSet { searchText = nil; generation &+= 1 } }
+    /// Bumped on every change, so caches built from `visits` (the command bar's completion index)
+    /// know when to rebuild without comparing 20,000 visits.
+    @ObservationIgnored public private(set) var generation = 0
     /// Lowercased title + address per visit, built on the first search after a change, so typing in
     /// the command bar doesn't lowercase the whole history on every keystroke.
     @ObservationIgnored private var searchText: [NSString]?

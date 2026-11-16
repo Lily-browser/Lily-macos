@@ -5,6 +5,8 @@ import Observation
 /// `BrowserWindowController` owns it and refreshes it from `TabStore`; views call back through it.
 @MainActor @Observable
 public final class WindowModel {
+    /// The command bar's completion index, kept between openings while its sources are unchanged.
+    @ObservationIgnored var completionIndexCache: (key: CompletionIndexKey, index: AddressCompletion.Index)?
     public struct TabItem: Identifiable, Equatable {
         public let id: UUID
         var title: String

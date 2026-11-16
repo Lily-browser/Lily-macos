@@ -138,16 +138,25 @@ final class CommandBarModel: Identifiable {
         let tabs = window.tabs.compactMap(\.url)
         let history = window.controller?.history
         let bookmarks = window.controller?.bookmarks
+        let includeBookmarks = !window.isPrivate
+        let key = CompletionIndexKey(history: history?.generation, bookmarks: includeBookmarks ? bookmarks?.generation : nil,
+                                     tabs: tabs, built: Date())
+        // Reopening the bar with nothing changed reuses the last index instead of rebuilding it.
+        if let cached = window.completionIndexCache, cached.key.canReuse(for: key) {
+            localIndex = cached.index
+            return
+        }
         let visits = history?.visits ?? []
-        let bookmarked = window.isPrivate ? [] : (bookmarks?.links.compactMap(\.url) ?? [])
+        let bookmarked = includeBookmarks ? (bookmarks?.links.compactMap(\.url) ?? []) : []
         guard !visits.isEmpty || !bookmarked.isEmpty || !tabs.isEmpty else { return }
-        indexTask = Task { [weak self] in
+        indexTask = Task { [weak self, weak window] in
             let index = await Task.detached(priority: .userInitiated) {
                 AddressCompletion.index(visits: visits.map { AddressCompletion.Visit(url: $0.url, title: $0.title, date: $0.visitedAt) },
-                                        bookmarks: bookmarked, tabs: tabs, now: Date())
+                                        bookmarks: bookmarked, tabs: tabs, now: key.built)
             }.value
-            guard !Task.isCancelled, let self else { return }
-            self.localIndex = index
+            guard !Task.isCancelled else { return }
+            window?.completionIndexCache = (key, index)
+            self?.localIndex = index
         }
     }
 
@@ -528,5 +537,20 @@ extension URL {
     var faviconGuess: URL? {
         guard let scheme, scheme.hasPrefix("http"), let host else { return nil }
         return URL(string: "\(scheme)://\(host)/favicon.ico")
+    }
+}
+
+/// What a completion index was built from. Reused while history, bookmarks and the open tabs'
+/// addresses are unchanged, for at most `maxAge` (frecency weights age with time).
+struct CompletionIndexKey: Equatable {
+    static let maxAge: TimeInterval = 15 * 60
+    let history: Int?
+    let bookmarks: Int?
+    let tabs: [URL]
+    let built: Date
+
+    func canReuse(for current: CompletionIndexKey) -> Bool {
+        history == current.history && bookmarks == current.bookmarks && tabs == current.tabs
+            && current.built.timeIntervalSince(built) < Self.maxAge
     }
 }

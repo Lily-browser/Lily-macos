@@ -20,7 +20,9 @@ public final class Bookmarks {
 
     static let maxLinks = 100_000
 
-    public private(set) var root: [Node] = [] { didSet { index = nil } }
+    public private(set) var root: [Node] = [] { didSet { index = nil; generation &+= 1 } }
+    /// Bumped on every change; see `History.generation`.
+    @ObservationIgnored public private(set) var generation = 0
     /// Every link with its lowercased title + address, rebuilt after changes.
     @ObservationIgnored private var index: [(link: Node, text: NSString)]?
     @ObservationIgnored private let file: SealedFile?
