@@ -90,7 +90,7 @@ import Testing
         // A few with live web views, the expensive kind.
         for index in stride(from: 0, to: 1_000, by: 100) { store.activate(store.tabs[index].id) }
         #expect(store.tabs.filter(\.hasWebView).count >= 10)
-        store.tabs.map(\.id).forEach(store.close)
+        store.tabs.map(\.id).forEach { store.close($0) }
         store.clearRecentlyClosed()
         #expect(weakTabs.filter { $0() != nil }.count == 0)
     }
