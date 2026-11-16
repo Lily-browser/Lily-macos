@@ -299,7 +299,22 @@ public final class TabStore {
             },
             activeIndex: saved.firstIndex { $0.id == activeID },
             spaces: spaces,
-            currentSpace: currentSpaceID)
+            currentSpace: currentSpaceID,
+            splits: savedSplits(of: saved))
+    }
+
+    /// Split groups by position in the saved tabs. Members that aren't saved (blank tabs, pages
+    /// that can't be reopened) drop out, shrinking the layout; groups left with one tab end.
+    private func savedSplits(of saved: [Tab]) -> [SessionStore.Session.SavedSplit]? {
+        guard !splits.isEmpty else { return nil }
+        let position = Dictionary(saved.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let kept: [SessionStore.Session.SavedSplit] = splits.compactMap { group in
+            var group = group
+            group.tabIDs.removeAll { position[$0] == nil }
+            guard let fitted = group.fitted() else { return nil }
+            return .init(layout: fitted.layout, tabs: fitted.tabIDs.compactMap { position[$0] }, scrollLinked: fitted.scrollLinked)
+        }
+        return kept.isEmpty ? nil : kept
     }
 
     // MARK: Split view
@@ -370,12 +385,11 @@ public final class TabStore {
         splits.removeAll { $0.tabIDs.contains(activeID) }
     }
 
-    /// Opens a local file the user chose (Open panel, Finder, or a restored bookmark).
-    @discardableResult
     // MARK: Moving tabs between windows
 
     /// Takes `id` out of this store without tearing it down (no `tearDown`, no recently-closed
     /// entry), to hand to another window's store (`adopt`). It leaves its split.
+    @discardableResult
     public func detach(_ id: UUID) -> Tab? {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return nil }
         leaveSplit(id)
@@ -398,6 +412,8 @@ public final class TabStore {
         _ = insert(tab, activate: activate, pinned: false, nextToActive: true)
     }
 
+    /// Opens a local file the user chose (Open panel, Finder, or a restored bookmark).
+    @discardableResult
     public func openFile(_ url: URL, activate: Bool = true, pinned: Bool = false) -> Tab {
         let tab = create(url: nil, activate: activate, pinned: pinned, nextToActive: false)
         tab.holdSecurityScope(url)
@@ -413,20 +429,49 @@ public final class TabStore {
         }
         let known = Set(spaces.map(\.id))
         let restoring = currentSpaceID
+        // The tab made for each entry; nil where a file couldn't be reopened.
+        var created: [Tab?] = []
+        created.reserveCapacity(session.tabs.count)
         for entry in session.tabs {
             currentSpaceID = entry.space.flatMap { known.contains($0) ? $0 : nil } ?? spaces[0].id
             if entry.url.isFileURL {
-                guard let bookmark = entry.bookmark else { continue }
                 var stale = false
-                guard let file = try? URL(resolvingBookmarkData: bookmark, options: [.withSecurityScope], bookmarkDataIsStale: &stale) else { continue }
-                openFile(file, activate: false, pinned: entry.pinned)
+                guard let bookmark = entry.bookmark,
+                      let file = try? URL(resolvingBookmarkData: bookmark, options: [.withSecurityScope], bookmarkDataIsStale: &stale) else {
+                    created.append(nil)
+                    continue
+                }
+                created.append(openFile(file, activate: false, pinned: entry.pinned))
             } else {
                 // Restored tabs load when first opened, not all at launch.
-                createAsleep(url: entry.url, title: entry.title, pinned: entry.pinned, in: currentSpaceID)
+                created.append(createAsleep(url: entry.url, title: entry.title, pinned: entry.pinned, in: currentSpaceID))
             }
         }
         currentSpaceID = restoring
-        if let i = session.activeIndex, tabs.indices.contains(i), tabs[i].spaceID == currentSpaceID { setActive(tabs[i].id) }
+        if let i = session.activeIndex, created.indices.contains(i), let tab = created[i], tab.spaceID == currentSpaceID { setActive(tab.id) }
         else { setActive(visibleTabs.first?.id) }
+        let restored = Self.restoredSplits(session.splits ?? [], created: created)
+        if !restored.isEmpty { splits = restored }
+    }
+
+    /// Rebuilds saved split groups from the restored tabs. A group that doesn't describe real tabs
+    /// (an index out of range, a tab twice or already in another group, pinned tabs, members in
+    /// different spaces, more tabs than its layout) is dropped; members whose tab couldn't be
+    /// reopened leave it, shrinking the layout. Never opens tabs.
+    static func restoredSplits(_ saved: [SessionStore.Session.SavedSplit], created: [Tab?]) -> [SplitGroup] {
+        var taken = Set<UUID>()
+        var groups: [SplitGroup] = []
+        for split in saved {
+            guard split.tabs.count <= split.layout.paneCount, Set(split.tabs).count == split.tabs.count,
+                  split.tabs.allSatisfy(created.indices.contains) else { continue }
+            let members = split.tabs.compactMap { created[$0] }
+            guard let space = members.first?.spaceID,
+                  members.allSatisfy({ !$0.isPinned && $0.spaceID == space && !taken.contains($0.id) }),
+                  let group = SplitGroup(layout: split.layout, tabIDs: members.map(\.id), scrollLinked: split.scrollLinked).fitted()
+            else { continue }
+            taken.formUnion(group.tabIDs)
+            groups.append(group)
+        }
+        return groups
     }
 }

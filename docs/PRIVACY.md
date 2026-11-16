@@ -16,7 +16,7 @@ backups.
 
 | What | Encrypted | Kept for | Removed by |
 |---|---|---|---|
-| Open tabs, pinned tabs, spaces (the session) | yes | until they change | Clear Browsing Data; closing tabs |
+| Open tabs, pinned tabs, spaces, split groups (the session) | yes | until they change | Clear Browsing Data; closing tabs |
 | History: page addresses, titles, times | yes | 90 days by default (Settings → Privacy → Keep history), at most 20,000 visits | Clear Browsing Data; History → Clear; *Clear history when Lily quits*; deleting visits |
 | Site icons, one small image per site you visited | yes (site names too) | while the site is in history; at most 600 | anything that removes the history it came from |
 | Typed text in long fields (comments, posts, messages) | yes | 24 hours; until the form is sent or the field emptied | Clear Browsing Data; *Clear history when Lily quits* |

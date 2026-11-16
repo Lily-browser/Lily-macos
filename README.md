@@ -34,7 +34,7 @@ Lily is written in Swift with AppKit and SwiftUI and renders pages with WebKit (
 - **Little Lily**: links from other apps (Mail, Slack, Notes…) open in a small window for one page, like Little Arc, instead of piling up as tabs. **Open in Lily** (⇧⌘O) moves the page into your main window as it is: same scroll position, typed text and video, no reload. Also File → New Little Lily Window (⌥⌘N) and Open Link in Little Lily in a page's menu. Turn it off in Settings → General to open links as tabs. How it works: [docs/LITTLE_LILY.md](docs/LITTLE_LILY.md).
 - **Private windows** (⇧⌘N): in-memory website data that is never saved, no history, no typed-text recovery, no extensions, and a request to macOS to keep the window out of screen capture.
 - **Sleeping tabs**: background tabs unused for 15 minutes (configurable, 5 in Low Power Mode) release their web view entirely to free memory and come back where you left off. Tabs playing media, using the camera or microphone, or in a visible split stay awake. Memory pressure from macOS puts eligible tabs to sleep immediately. The app doesn't poll for this: it wakes only when a tab is due to sleep. Restored and imported tabs load only when you first open them, so thousands of tabs cost about a kilobyte each.
-- Tabs, pinned tabs, spaces and opened files (*File → Open File…*) are restored on launch.
+- Tabs, pinned tabs, spaces, split groups and opened files (*File → Open File…*) are restored on launch. The session is saved as you go and again when you quit; closing the main window and opening a new one (⌘N or the Dock icon) brings its tabs back instead of starting empty.
 
 **Pages**
 - **Site settings** per website (toolbar button or ⌥⌘,): zoom, appearance, JavaScript, ads, camera and microphone, and clearing the site's data.
@@ -69,7 +69,7 @@ Lily is written in Swift with AppKit and SwiftUI and renders pages with WebKit (
 - Can be the default browser; opens `http`/`https` links and HTML files.
 - **Handoff**: a page open in Safari (or another browser) on your iPhone, iPad or another Mac opens in Lily when you click the Handoff icon at the end of the Dock, as a new tab in your main window, also when Lily isn't running yet. It needs Lily as your default browser (Settings → General) and Handoff turned on in System Settings → General → AirDrop & Handoff on both devices. Only web pages are accepted, and trackers are removed from the address as for any opened link. The other direction, offering Lily's current page to your other devices, is off by default, since it shares each page's address and title (Settings → Privacy → Continue pages on other devices).
 - Haptic feedback on Force Touch trackpads for reordering and dragging tabs, pinning, splitting, switching spaces and crossing the space-swipe threshold (Settings → General).
-- Appearance: accent color, sidebar color and strength, a paper-like grain, and System / Light / Dark.
+- Appearance: sidebar text size (Small, Medium, Large), accent color, sidebar color and strength, a paper-like grain, and System / Light / Dark.
 - Release DMGs are universal binaries (arm64 + x86_64).
 
 ## Keyboard shortcuts
@@ -215,7 +215,7 @@ Everything lives in the app container's `Application Support/Lily/`. Sealed file
 
 | File | Owner | Contents |
 |---|---|---|
-| `session.sealed` | `SessionStore` | open tabs, pinned state, spaces (incl. Separate logins), active tab |
+| `session.sealed` | `SessionStore` | open tabs, pinned state, spaces (incl. Separate logins), split groups, active tab |
 | `history.sealed` | `History` | visits (90 days by default, at most 20,000) |
 | `bookmarks.sealed` | `Bookmarks` | imported bookmarks |
 | `sites.sealed` | `SiteSettings` | per-site zoom, dark mode, JavaScript, permissions, ads allowed |

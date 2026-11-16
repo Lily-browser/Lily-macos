@@ -72,6 +72,17 @@ public struct SplitGroup: Equatable, Sendable {
         return group
     }
 
+    /// The layout shrunk until it has exactly one pane per tab; nil when that's impossible (fewer
+    /// than two tabs, or more tabs than the layout holds).
+    func fitted() -> SplitGroup? {
+        var group = self
+        while group.tabIDs.count < group.layout.paneCount {
+            guard let smaller = group.layout.shrunk else { return nil }
+            group.layout = smaller
+        }
+        return group.tabIDs.count == group.layout.paneCount && group.tabIDs.count >= 2 ? group : nil
+    }
+
     func adding(_ id: UUID) -> SplitGroup? {
         guard !tabIDs.contains(id), let bigger = layout.grown else { return nil }
         var group = self
