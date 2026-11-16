@@ -27,7 +27,16 @@ extension BrowserWindowController: NSMenuItemValidation, NSToolbarItemValidation
     @objc public func newTab(_ sender: Any?) {
         // Little Lily holds one page; a new tab belongs in the main window.
         if isLittle && tabs.active != nil { return openInMainWindow(nil, activate: true) }
-        model.presentCommandBar(newTab: true)
+        // Settings → Tabs → New tab opens. Little Lily's empty window always asks where to go.
+        let action = isLittle ? .commandBar : NewTabAction.current(Preferences.Key.newTabAction)
+        switch action.effect(homepage: Preferences.homepage) {
+        case .showCommandBar:
+            model.presentCommandBar(newTab: true)
+        case .openTab(let url):
+            tabs.create(url: url)
+            focusActivePage()
+            Haptics.tap()
+        }
     }
 
     @objc public func closeTab(_ sender: Any?) {
@@ -80,13 +89,11 @@ extension BrowserWindowController: NSMenuItemValidation, NSToolbarItemValidation
     @objc public func goForward(_ sender: Any?) { tabs.active?.goForward() }
 
     @objc public func toggleSidebar(_ sender: Any?) {
-        (window?.contentViewController as? NSSplitViewController)?.toggleSidebar(sender)
+        sidebarSplit?.toggleSidebar(sender)
     }
 
     @objc public func toggleAssistant(_ sender: Any?) {
-        if let split = window?.contentViewController as? NSSplitViewController, split.splitViewItems.first?.isCollapsed == true {
-            split.toggleSidebar(sender)
-        }
+        if isSidebarCollapsed { sidebarSplit?.toggleSidebar(sender) }
         model.showsAssistant.toggle()
     }
 
@@ -122,15 +129,16 @@ extension BrowserWindowController: NSMenuItemValidation, NSToolbarItemValidation
         operation.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
     }
 
-    @objc public func zoomIn(_ sender: Any?) { adjustZoom(by: 0.1) }
-    @objc public func zoomOut(_ sender: Any?) { adjustZoom(by: -0.1) }
+    @objc public func zoomIn(_ sender: Any?) { stepZoom(in: true) }
+    @objc public func zoomOut(_ sender: Any?) { stepZoom(in: false) }
     @objc public func actualSize(_ sender: Any?) { setZoom(SiteSettings.defaultZoom) }
 
-    private func adjustZoom(by delta: CGFloat) {
+    /// Steps through SiteSettings.zoomLevels, Safari-like.
+    private func stepZoom(in zoomingIn: Bool) {
         guard let web = tabs.active?.webView else { return }
-        let next = Double(min(3, max(0.3, web.pageZoom + delta)))
-        if next == 3 || next == 0.3 { Haptics.snap() } // hit a limit
-        setZoom((next * 100).rounded() / 100)
+        let next = SiteSettings.zoomLevel(after: Double(web.pageZoom), zoomingIn: zoomingIn)
+        if SiteSettings.isZoomLimit(next) { Haptics.snap() } // hit a limit
+        setZoom(next)
     }
 
     /// Applies a zoom level and remembers it for the site (except in private windows).

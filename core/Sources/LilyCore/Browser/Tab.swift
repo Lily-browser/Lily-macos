@@ -448,8 +448,9 @@ extension Tab: WKNavigationDelegate {
                 Log.web.info("Blocked a page-initiated new tab to \(url.scheme ?? "?", privacy: .public):")
                 return (.cancel, preferences)
             }
+            // Settings → Tabs: background by default (as in Safari); ⇧ does the opposite.
             delegate?.tab(self, requestsNewTabWith: navigationAction.request,
-                          inBackground: !navigationAction.modifierFlags.contains(.shift))
+                          inBackground: Preferences.linksOpenInBackground != navigationAction.modifierFlags.contains(.shift))
             return (.cancel, preferences)
         }
         // A clicked link that carries tracking parameters loads without them (and without the

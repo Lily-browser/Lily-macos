@@ -104,6 +104,9 @@ final class TabContentViewController: NSViewController {
     private var panes: [PaneView] = []
     private var shown: (layout: SplitLayout?, ids: [UUID]) = (nil, [])
     private var clickMonitor: Any?
+    /// Settings → Appearance → Page: corner radius and the margin around the panes.
+    private(set) var pageStyle = PageStyle.current()
+    private var edgeConstraints: (leading: [NSLayoutConstraint], trailing: [NSLayoutConstraint], bottom: NSLayoutConstraint)?
     /// Called when the user clicks into a pane that isn't the active tab.
     var onFocus: (@MainActor (UUID) -> Void)?
     /// Called when a paused pane is scrolled, which resumes it without focusing it.
@@ -115,16 +118,19 @@ final class TabContentViewController: NSViewController {
         findSlot.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(findSlot)
         root.addSubview(container)
-        NSLayoutConstraint.activate([
-            findSlot.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 2),
-            findSlot.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -8),
+        let leading = [findSlot.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+                       container.leadingAnchor.constraint(equalTo: root.leadingAnchor)]
+        let trailing = [root.trailingAnchor.constraint(equalTo: findSlot.trailingAnchor),
+                        root.trailingAnchor.constraint(equalTo: container.trailingAnchor)]
+        let bottom = root.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+        edgeConstraints = (leading, trailing, bottom)
+        NSLayoutConstraint.activate(leading + trailing + [
             findSlot.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor),
             findHeight,
-            container.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 2),
-            container.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -8),
             container.topAnchor.constraint(equalTo: findSlot.bottomAnchor),
-            container.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -8),
+            bottom,
         ])
+        applyEdges()
         emptyLabel.textColor = .tertiaryLabelColor
         emptyLabel.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(emptyLabel)
@@ -142,6 +148,22 @@ final class TabContentViewController: NSViewController {
             MainActor.assumeIsolated { self?.focusPane(at: event) }
             return event
         }
+    }
+
+    /// Settings → Appearance → Page changed (or the sidebar moved sides): live, no rebuild.
+    func apply(_ style: PageStyle) {
+        guard style != pageStyle else { return }
+        pageStyle = style
+        guard isViewLoaded else { return }
+        applyEdges()
+        panes.forEach { $0.cornerRadius = style.cornerRadius }
+    }
+
+    private func applyEdges() {
+        guard let edgeConstraints else { return }
+        edgeConstraints.leading.forEach { $0.constant = pageStyle.leading }
+        edgeConstraints.trailing.forEach { $0.constant = pageStyle.trailing }
+        edgeConstraints.bottom.constant = pageStyle.padding
     }
 
     func tearDown() {
@@ -205,7 +227,7 @@ final class TabContentViewController: NSViewController {
     private func rebuild(layout: SplitLayout?, tabs: [Tab]) {
         container.subviews.forEach { $0.removeFromSuperview() }
         panes.forEach { $0.thaw() }
-        panes = tabs.map { tab in PaneView(tab: tab) { [weak self] in self?.onResume?(tab.id) } }
+        panes = tabs.map { tab in PaneView(tab: tab, cornerRadius: pageStyle.cornerRadius) { [weak self] in self?.onResume?(tab.id) } }
         shown = (layout, tabs.map(\.id))
         guard !panes.isEmpty else { return }
         let content: NSView
@@ -272,17 +294,21 @@ private final class EvenSplitView: NSSplitView {
 private final class PaneView: NSView {
     let tabID: UUID
     var isFocused = false { didSet { updateBorder() } }
+    var cornerRadius: CGFloat {
+        get { layer?.cornerRadius ?? 0 }
+        set { layer?.cornerRadius = newValue }
+    }
     private weak var web: NSView?
     private var cover: FrozenPaneView?
     private let resumed: () -> Void
     var isFrozen: Bool { cover != nil }
 
-    init(tab: Tab, resumed: @escaping () -> Void) {
+    init(tab: Tab, cornerRadius: CGFloat, resumed: @escaping () -> Void) {
         tabID = tab.id
         self.resumed = resumed
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.cornerRadius = 10
+        layer?.cornerRadius = cornerRadius
         layer?.masksToBounds = true
         let web = tab.webView
         web.removeFromSuperview()

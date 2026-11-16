@@ -159,6 +159,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
 
     /// The encrypted session save is async, so quitting waits for it.
     public func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if !terminating, !confirmQuit() { return .terminateCancel }
         assistant?.cancelAll()
         guard let sessionStore else { return .terminateNow }
         // The main window's tabs now; with it closed, what it last held (saved again only if the
@@ -182,6 +183,30 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
             NSApp.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
+    }
+
+    /// Settings → General → Confirm before quitting: asks when ⌘Q would close several windows or
+    /// many tabs. Quits that macOS asks for (log out, restart, an update) never wait on a dialog.
+    private func confirmQuit() -> Bool {
+        let regular = windows.filter { !$0.isLittle }
+        let tabCount = regular.reduce(0) { $0 + $1.tabs.tabs.count }
+        guard QuitConfirmation.shouldAsk(enabled: Preferences.confirmsBeforeQuitting, windows: regular.count, tabs: tabCount),
+              NSAppleEventManager.shared().currentAppleEvent == nil,
+              !ProcessInfo.processInfo.arguments.contains("--self-test") else { return true }
+        let alert = NSAlert()
+        alert.messageText = "Quit Lily?"
+        let windowsText = regular.count == 1 ? "1 window" : "\(regular.count) windows"
+        let tabsText = tabCount == 1 ? "1 tab" : "\(tabCount) tabs"
+        alert.informativeText = "You have \(windowsText) with \(tabsText) open."
+        alert.addButton(withTitle: "Quit")
+        alert.addButton(withTitle: "Cancel")
+        alert.showsSuppressionButton = true
+        alert.suppressionButton?.title = "Don't ask again"
+        let quit = alert.runModal() == .alertFirstButtonReturn
+        if quit, alert.suppressionButton?.state == .on {
+            UserDefaults.standard.set(false, forKey: Preferences.Key.confirmBeforeQuitting)
+        }
+        return quit
     }
 
     @objc public func clearBrowsingData(_ sender: Any?) {

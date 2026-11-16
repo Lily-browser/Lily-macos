@@ -28,8 +28,8 @@ final class SettingsWindowController: NSWindowController {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
-    private static func pane(_ title: String, symbol: String, _ view: some View) -> NSTabViewItem {
-        let host = NSHostingController(rootView: view.frame(width: 520).fixedSize().appAccent())
+    private static func pane<V: View>(_ title: String, symbol: String, _ view: V) -> NSTabViewItem {
+        let host = PaneHostingController(rootView: AnyView(view.frame(width: 520).fixedSize().appAccent()))
         host.sizingOptions = .preferredContentSize
         let item = NSTabViewItem(viewController: host)
         item.label = title
@@ -50,6 +50,20 @@ final class SettingsWindowController: NSWindowController {
     }
 }
 
+/// A settings pane whose height can change while it's showing (Appearance's sections): the
+/// window follows, keeping its top edge where it is.
+private final class PaneHostingController: NSHostingController<AnyView> {
+    override var preferredContentSize: NSSize {
+        didSet {
+            guard preferredContentSize != oldValue, preferredContentSize.height > 0, let window = view.window,
+                  (parent as? NSTabViewController)?.tabView.selectedTabViewItem?.viewController === self else { return }
+            var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: preferredContentSize))
+            frame.origin = NSPoint(x: window.frame.minX, y: window.frame.maxY - frame.height)
+            window.setFrame(frame, display: true, animate: !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+        }
+    }
+}
+
 struct GeneralSettingsView: View {
     @AppStorage(Preferences.Key.searchEngine) private var searchEngine = Preferences.defaultSearchEngine.rawValue
     @AppStorage(Preferences.Key.homepage) private var homepage = Preferences.defaultHomepage
@@ -57,6 +71,7 @@ struct GeneralSettingsView: View {
     @AppStorage(Preferences.Key.haptics) private var haptics = true
     @AppStorage(Preferences.Key.webDeveloperFeatures) private var webDeveloper = false
     @AppStorage(Preferences.Key.linksOpenInLittleLily) private var linksInLittle = true
+    @AppStorage(Preferences.Key.confirmBeforeQuitting) private var confirmQuit = false
     @State private var isDefaultBrowser = DefaultBrowser.isDefault
     @State private var defaultBrowserError: String?
 
@@ -82,6 +97,11 @@ struct GeneralSettingsView: View {
                 Text("Tabs from last time").tag(true)
                 Text("The homepage").tag(false)
             }
+            Toggle("Confirm before quitting with ⌘Q", isOn: $confirmQuit)
+            LabeledContent("") {
+                Text("Asks when two or more windows, or \(QuitConfirmation.tabThreshold) or more tabs, are open.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
             LabeledContent("Default browser:") {
                 if isDefaultBrowser {
                     Label("Lily is your default browser", systemImage: "checkmark.circle.fill")
@@ -103,6 +123,17 @@ struct GeneralSettingsView: View {
                     }
                 }
             }
+            LabeledContent("Keyboard shortcuts:") {
+                Text("Every command is in Lily's menus, so you can change any shortcut in System Settings → Keyboard → Keyboard Shortcuts → App Shortcuts: add Lily and type the menu item's exact name.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            LabeledContent("") {
+                VStack(alignment: .leading, spacing: 4) {
+                    Button("Reset All Settings to Defaults…") { Customization.confirmAndResetAll() }
+                    Text("How Lily looks and works. Your history, bookmarks, extensions, site settings and privacy choices stay.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
         .formStyle(.columns)
         .padding(20)
@@ -116,14 +147,36 @@ struct TabsSettingsView: View {
     @AppStorage(Preferences.Key.newTabsNextToCurrent) private var nextToCurrent = true
     @AppStorage(Preferences.Key.sleepTabsAfter) private var sleepAfter = TabSleeper.defaultMinutes
     @AppStorage(Preferences.Key.pauseIdlePanesAfter) private var pausePanesAfter = PaneFreezer.defaultMinutes
+    @AppStorage(Preferences.Key.newTabAction) private var newTabAction = NewTabAction.default.rawValue
+    @AppStorage(Preferences.Key.afterClosingTab) private var afterClose = TabStore.AfterClose.default.rawValue
+    @AppStorage(Preferences.Key.linksOpenInBackground) private var linksInBackground = true
+    @AppStorage(Preferences.Key.swipeBetweenSpaces) private var swipeSpaces = true
 
     var body: some View {
         Form {
+            Picker("⌘T opens:", selection: $newTabAction) {
+                ForEach(NewTabAction.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) }
+            }
+            .frame(width: 300)
             Picker("Open new tabs:", selection: $nextToCurrent) {
                 Text("Next to the current tab").tag(true)
                 Text("At the end of the list").tag(false)
             }
             .pickerStyle(.radioGroup)
+            Picker("After closing a tab, show:", selection: $afterClose) {
+                ForEach(TabStore.AfterClose.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) }
+            }
+            .frame(width: 300)
+            Picker("⌘-click or middle-click a link:", selection: $linksInBackground) {
+                Text("Opens it in the background").tag(true)
+                Text("Opens it and switches to it").tag(false)
+            }
+            .frame(width: 360)
+            LabeledContent("") {
+                Text("Hold ⇧ as well to do the opposite.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Toggle("Swipe with two fingers on the sidebar to switch spaces", isOn: $swipeSpaces)
             Picker("Sleep unused tabs after:", selection: $sleepAfter) {
                 Text("5 minutes").tag(5)
                 Text("15 minutes").tag(15)
@@ -158,65 +211,209 @@ struct TabsSettingsView: View {
 }
 
 struct AppearanceSettingsView: View {
+    /// The pane's sections, one at a time so the window stays a sensible size.
+    enum Section: String, CaseIterable {
+        case theme = "Theme", sidebar = "Sidebar", page = "Page", commandBar = "Command Bar"
+    }
+
+    @State private var section = Section.theme
+    // Theme
     @AppStorage(AppearanceStyle.Key.appAppearance) private var mode = AppearanceStyle.Mode.system.rawValue
     @AppStorage(AppearanceStyle.Key.accent) private var accent = AppearanceStyle.defaultAccent
     @AppStorage(AppearanceStyle.Key.sidebarTint) private var tint = AppearanceStyle.defaultAccent
     @AppStorage(AppearanceStyle.Key.tintStrength) private var strength = 0.12
     @AppStorage(AppearanceStyle.Key.grain) private var grain = 0.0
+    // Sidebar
+    @AppStorage(AppearanceStyle.Key.sidebarPosition) private var position = SidebarPosition.default.rawValue
+    @AppStorage(AppearanceStyle.Key.interfaceFont) private var font = InterfaceFont.default.rawValue
     @AppStorage(AppearanceStyle.Key.sidebarTextSize) private var textSize = SidebarTextSize.default.rawValue
+    @AppStorage(AppearanceStyle.Key.tabDensity) private var density = TabDensity.default.rawValue
+    @AppStorage(AppearanceStyle.Key.closeButton) private var closeButton = CloseButtonVisibility.default.rawValue
+    @AppStorage(AppearanceStyle.Key.dimSleepingTabs) private var dimSleeping = true
+    @AppStorage(AppearanceStyle.Key.showsAddressField) private var showsAddress = true
+    @AppStorage(AppearanceStyle.Key.pinnedColumns) private var pinnedColumns = PinnedColumns.automatic
+    @AppStorage(AppearanceStyle.Key.footerAssistant) private var footerAssistant = true
+    @AppStorage(AppearanceStyle.Key.footerHistory) private var footerHistory = true
+    @AppStorage(AppearanceStyle.Key.footerDownloads) private var footerDownloads = true
+    @AppStorage(AppearanceStyle.Key.footerNewTab) private var footerNewTab = true
+    // Page
+    @AppStorage(AppearanceStyle.Key.pageCornerRadius) private var cornerRadius = PageStyle.defaultCornerRadius
+    @AppStorage(AppearanceStyle.Key.pagePadding) private var padding = PageStyle.defaultPadding
+    // Command bar
+    @AppStorage(AppearanceStyle.Key.commandBarBlur) private var blur = CommandBarBlur.default.rawValue
+    @AppStorage(AppearanceStyle.Key.commandBarPosition) private var barPosition = CommandBarPosition.default.rawValue
+    @AppStorage(AppearanceStyle.Key.commandBarWidth) private var barWidth = CommandBarWidth.default.rawValue
 
     var body: some View {
-        Form {
-            Picker("Appearance:", selection: $mode) {
-                ForEach(AppearanceStyle.Mode.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
+        VStack(spacing: 16) {
+            Picker("", selection: $section) {
+                ForEach(Section.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
-            .frame(width: 260)
-            .onChange(of: mode) { _, _ in AppearanceStyle.applyAppAppearance() }
-
-            Picker("Sidebar text size:", selection: $textSize) {
-                ForEach(SidebarTextSize.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) }
+            .labelsHidden()
+            .frame(width: 400)
+            Form {
+                switch section {
+                case .theme: theme
+                case .sidebar: sidebar
+                case .page: page
+                case .commandBar: commandBar
+                }
+                LabeledContent("") {
+                    Button("Restore \(section.rawValue) Defaults") { restoreDefaults() }
+                }
             }
-            .pickerStyle(.segmented)
-            .frame(width: 260)
+            .formStyle(.columns)
+        }
+        .padding(20)
+    }
 
-            LabeledContent("Accent color:") { swatches($accent) }
-            LabeledContent("Sidebar color:") { swatches($tint) }
-            LabeledContent("Color strength:") {
-                Slider(value: $strength, in: 0...0.5) { EmptyView() } minimumValueLabel: { Image(systemName: "circle") } maximumValueLabel: { Image(systemName: "circle.fill") }
+    // MARK: Sections
+
+    @ViewBuilder private var theme: some View {
+        Picker("Appearance:", selection: $mode) {
+            ForEach(AppearanceStyle.Mode.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
+        }
+        .pickerStyle(.segmented)
+        .frame(width: 260)
+        .onChange(of: mode) { _, _ in AppearanceStyle.applyAppAppearance() }
+        LabeledContent("Accent color:") { swatches($accent) }
+        LabeledContent("Sidebar color:") { swatches($tint) }
+        LabeledContent("Color strength:") {
+            Slider(value: $strength, in: 0...0.5) { EmptyView() } minimumValueLabel: { Image(systemName: "circle") } maximumValueLabel: { Image(systemName: "circle.fill") }
+                .frame(width: 260)
+        }
+        LabeledContent("Grain:") {
+            VStack(alignment: .leading, spacing: 4) {
+                Slider(value: $grain, in: 0...0.6) { EmptyView() } minimumValueLabel: { Text("Smooth").font(.caption) } maximumValueLabel: { Text("Paper").font(.caption) }
                     .frame(width: 260)
-            }
-            LabeledContent("Grain:") {
-                VStack(alignment: .leading, spacing: 4) {
-                    Slider(value: $grain, in: 0...0.6) { EmptyView() } minimumValueLabel: { Text("Smooth").font(.caption) } maximumValueLabel: { Text("Paper").font(.caption) }
-                        .frame(width: 260)
-                    Text("Adds a subtle paper-like texture to the sidebar.").font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            LabeledContent("Preview:") {
-                ZStack(alignment: .topLeading) {
-                    RoundedRectangle(cornerRadius: 10).fill(.background)
-                    SidebarBackground().clipShape(RoundedRectangle(cornerRadius: 10))
-                    VStack(alignment: .leading, spacing: 6) {
-                        RoundedRectangle(cornerRadius: 6).fill(Color(hex: accent).opacity(0.22)).frame(height: 22)
-                            .overlay(alignment: .leading) { Text("Active tab").font(.caption).padding(.leading, 8) }
-                        Text("Another tab").font(.caption).padding(.leading, 8)
-                    }
-                    .padding(10)
-                }
-                .frame(width: 260, height: 80)
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.separator))
-            }
-            LabeledContent("") {
-                Button("Restore Defaults") {
-                    accent = AppearanceStyle.defaultAccent; tint = AppearanceStyle.defaultAccent; strength = 0.12; grain = 0
-                    mode = AppearanceStyle.Mode.system.rawValue; AppearanceStyle.applyAppAppearance()
-                    textSize = SidebarTextSize.default.rawValue
-                }
+                Text("Adds a subtle paper-like texture to the sidebar.").font(.caption).foregroundStyle(.secondary)
             }
         }
-        .formStyle(.columns)
-        .padding(20)
+        LabeledContent("Preview:") { preview }
+    }
+
+    @ViewBuilder private var sidebar: some View {
+        segmented("Position:", $position, SidebarPosition.self, \.label)
+        segmented("Font:", $font, InterfaceFont.self, \.label)
+        LabeledContent("") {
+            Text("For the sidebar and the command bar.").font(.caption).foregroundStyle(.secondary)
+        }
+        segmented("Text size:", $textSize, SidebarTextSize.self, \.label)
+        segmented("Tab spacing:", $density, TabDensity.self, \.label)
+        segmented("Close button:", $closeButton, CloseButtonVisibility.self, \.label)
+        Picker("Pinned tab columns:", selection: $pinnedColumns) {
+            ForEach(PinnedColumns.choices, id: \.self) { Text($0 == PinnedColumns.automatic ? "Automatic" : "\($0)").tag($0) }
+        }
+        .pickerStyle(.segmented)
+        .frame(width: 300)
+        LabeledContent("Show:") {
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle("Address field", isOn: $showsAddress)
+                Toggle("Sleeping tabs dimmed", isOn: $dimSleeping)
+            }
+        }
+        LabeledContent("Footer buttons:") {
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle("Assistant", isOn: $footerAssistant)
+                Toggle("History", isOn: $footerHistory)
+                Toggle("Downloads", isOn: $footerDownloads)
+                Toggle("New Tab", isOn: $footerNewTab)
+                Text("The space switcher always shows. Everything stays in the menus and the command palette (⌘K).")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        LabeledContent("Preview:") { preview }
+    }
+
+    @ViewBuilder private var page: some View {
+        LabeledContent("Corner radius:") {
+            HStack {
+                Slider(value: $cornerRadius, in: PageStyle.cornerRadiusRange, step: 1) { EmptyView() }
+                    minimumValueLabel: { Image(systemName: "square") } maximumValueLabel: { Image(systemName: "app") }
+                    .frame(width: 260)
+                Text("\(Int(cornerRadius)) pt").monospacedDigit().foregroundStyle(.secondary).frame(width: 40, alignment: .trailing)
+            }
+        }
+        LabeledContent("Margin:") {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Slider(value: $padding, in: PageStyle.paddingRange, step: 1) { EmptyView() }
+                        minimumValueLabel: { Text("None").font(.caption) } maximumValueLabel: { Text("Roomy").font(.caption) }
+                        .frame(width: 260)
+                    Text("\(Int(padding)) pt").monospacedDigit().foregroundStyle(.secondary).frame(width: 40, alignment: .trailing)
+                }
+                Text("Space around web pages and split panes. With no margin and no rounding, pages fill the window edge to edge.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        LabeledContent("Preview:") {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10).fill(.quaternary)
+                RoundedRectangle(cornerRadius: cornerRadius / 2, style: .continuous).fill(.background)
+                    .overlay(RoundedRectangle(cornerRadius: cornerRadius / 2, style: .continuous).strokeBorder(.separator))
+                    .padding(padding / 2)
+            }
+            .frame(width: 260, height: 80)
+        }
+    }
+
+    @ViewBuilder private var commandBar: some View {
+        segmented("Background blur:", $blur, CommandBarBlur.self, \.label)
+        LabeledContent("") {
+            Text("With Reduce Transparency on, the page behind is only dimmed.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+        segmented("Position:", $barPosition, CommandBarPosition.self, \.label)
+        segmented("Width:", $barWidth, CommandBarWidth.self, \.label)
+    }
+
+    // MARK: Pieces
+
+    private func segmented<Choice: StoredChoice>(_ title: String, _ value: Binding<String>, _ type: Choice.Type,
+                                                 _ label: KeyPath<Choice, String>) -> some View {
+        Picker(title, selection: value) {
+            ForEach(Array(Choice.allCases), id: \.rawValue) { Text($0[keyPath: label]).tag($0.rawValue) }
+        }
+        .pickerStyle(.segmented)
+        .frame(width: 300)
+    }
+
+    private var preview: some View {
+        let row = SidebarRowStyle(textSize: SidebarTextSize(stored: textSize), density: TabDensity(stored: density))
+        return ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 10).fill(.background)
+            SidebarBackground().clipShape(RoundedRectangle(cornerRadius: 10))
+            VStack(alignment: .leading, spacing: 0) {
+                RoundedRectangle(cornerRadius: 6).fill(Color(hex: accent).opacity(0.22)).frame(height: row.rowHeight)
+                    .overlay(alignment: .leading) { Text("Active tab").font(.system(size: row.titleSize)).padding(.leading, 8) }
+                Text("Another tab").font(.system(size: row.titleSize)).padding(.leading, 8).frame(height: row.rowHeight)
+            }
+            .padding(10)
+        }
+        .fontDesign(InterfaceFont(stored: font).design)
+        .frame(width: 260, height: 40 + row.rowHeight * 2)
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.separator))
+    }
+
+    private func restoreDefaults() {
+        let keys: [String]
+        switch section {
+        case .theme:
+            keys = [AppearanceStyle.Key.appAppearance, AppearanceStyle.Key.accent, AppearanceStyle.Key.sidebarTint,
+                    AppearanceStyle.Key.tintStrength, AppearanceStyle.Key.grain]
+        case .sidebar:
+            keys = [AppearanceStyle.Key.sidebarPosition, AppearanceStyle.Key.interfaceFont, AppearanceStyle.Key.sidebarTextSize,
+                    AppearanceStyle.Key.tabDensity, AppearanceStyle.Key.closeButton, AppearanceStyle.Key.dimSleepingTabs,
+                    AppearanceStyle.Key.showsAddressField, AppearanceStyle.Key.pinnedColumns, AppearanceStyle.Key.footerAssistant,
+                    AppearanceStyle.Key.footerHistory, AppearanceStyle.Key.footerDownloads, AppearanceStyle.Key.footerNewTab]
+        case .page:
+            keys = [AppearanceStyle.Key.pageCornerRadius, AppearanceStyle.Key.pagePadding]
+        case .commandBar:
+            keys = [AppearanceStyle.Key.commandBarBlur, AppearanceStyle.Key.commandBarPosition, AppearanceStyle.Key.commandBarWidth]
+        }
+        Customization.reset(keys)
+        if section == .theme { AppearanceStyle.applyAppAppearance() }
     }
 
     private func swatches(_ value: Binding<String>) -> some View {
@@ -242,7 +439,8 @@ struct WebsitesSettingsView: View {
     var body: some View {
         Form {
             Picker("Default zoom:", selection: $defaultZoom) {
-                ForEach([0.75, 0.85, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0], id: \.self) { Text("\(Int($0 * 100))%").tag($0) }
+                // The levels ⌘− / ⌘+ step through.
+                ForEach(SiteSettings.zoomLevels, id: \.self) { Text("\(Int(($0 * 100).rounded()))%").tag($0) }
             }
             .frame(width: 220)
             Picker("Website appearance:", selection: $defaultDarkMode) {
@@ -302,13 +500,23 @@ struct PrivacySettingsView: View {
     @AppStorage(Preferences.Key.clearHistoryOnQuit) private var clearHistoryOnQuit = false
     @AppStorage(Preferences.Key.clearWebsiteDataOnQuit) private var clearDataOnQuit = false
     @AppStorage(Preferences.Key.searchSuggestions) private var searchSuggestions = true
+    @AppStorage(Preferences.Key.searchSuggestionRows) private var suggestionRows = SearchSuggestions.maxSuggestions
     @AppStorage(Preferences.Key.searchEngine) private var searchEngine = Preferences.defaultSearchEngine.rawValue
 
     private var engine: Preferences.SearchEngine { Preferences.SearchEngine(rawValue: searchEngine) ?? Preferences.defaultSearchEngine }
 
     var body: some View {
         Form {
-            Toggle("Search engine suggestions", isOn: $searchSuggestions)
+            LabeledContent("") {
+                HStack(spacing: 16) {
+                    Toggle("Search engine suggestions", isOn: $searchSuggestions)
+                    Stepper(value: $suggestionRows, in: 0...SearchSuggestions.maxSuggestions) {
+                        Text(suggestionRows == 1 ? "1 row" : "\(suggestionRows) rows").monospacedDigit()
+                    }
+                    .disabled(!searchSuggestions)
+                    .help("How many suggestions from your search engine the command bar shows. 0 shows none and sends nothing.")
+                }
+            }
             LabeledContent("") {
                 Text(engine == .kagi
                      ? "Kagi offers no suggestions without signing in, so with Kagi nothing you type is sent until you search; the command bar suggests from your tabs, bookmarks and history only."

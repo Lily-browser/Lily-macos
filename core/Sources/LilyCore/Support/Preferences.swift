@@ -46,6 +46,18 @@ public enum Preferences {
         public static let filterListsCompiledFrom = "FilterListsCompiledFrom"
         /// Search-engine suggestions while typing in the command bar; on by default (SearchSuggestions).
         public static let searchSuggestions = "SearchEngineSuggestions"
+        /// How many engine suggestion rows the command bar shows (0–5, 5 by default).
+        public static let searchSuggestionRows = "SearchEngineSuggestionRows"
+        /// What ⌘T opens (NewTabAction): the command bar by default.
+        public static let newTabAction = "NewTabAction"
+        /// Which tab is shown after closing the active one (TabStore.AfterClose): last used by default.
+        public static let afterClosingTab = "AfterClosingTab"
+        /// ⌘-click / middle-click opens links in the background (default; ⇧ flips it).
+        public static let linksOpenInBackground = "LinksOpenInBackground"
+        /// Ask before ⌘Q quits with several windows or many tabs; off by default.
+        public static let confirmBeforeQuitting = "ConfirmBeforeQuitting"
+        /// Two-finger swipes on the sidebar switch spaces; on by default.
+        public static let swipeBetweenSpaces = "SwipeBetweenSpaces"
     }
 
     public enum SearchEngine: String, CaseIterable, Identifiable, Sendable {
@@ -99,6 +111,17 @@ public enum Preferences {
     /// Sends what you type in the command bar to your search engine for suggestions (not in
     /// private windows, never with Kagi). On by default.
     public static var searchSuggestionsEnabled: Bool { flag(Key.searchSuggestions, default: true) }
+
+    /// Engine suggestion rows in the command bar, 0–5. 0 shows none (and sends nothing), but the
+    /// switch above is what turns suggestions off.
+    public static var searchSuggestionRows: Int {
+        let stored = UserDefaults.standard.object(forKey: Key.searchSuggestionRows) as? Int ?? SearchSuggestions.maxSuggestions
+        return min(SearchSuggestions.maxSuggestions, max(0, stored))
+    }
+
+    public static var linksOpenInBackground: Bool { flag(Key.linksOpenInBackground, default: true) }
+    public static var swipesBetweenSpaces: Bool { flag(Key.swipeBetweenSpaces, default: true) }
+    public static var confirmsBeforeQuitting: Bool { flag(Key.confirmBeforeQuitting, default: false) }
 
     /// Address-bar resolver using the user's search engine.
     public static var urlResolver: URLResolver { URLResolver(searchTemplate: searchEngine.template) }

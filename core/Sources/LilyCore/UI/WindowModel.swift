@@ -156,7 +156,10 @@ public final class WindowModel {
         controller?.tabs.close(id)
         Haptics.tap()
     }
-    func newTab() { presentCommandBar(newTab: true) }
+    /// The New Tab buttons do what ⌘T does (Settings → Tabs → New tab opens).
+    func newTab() {
+        if let controller { controller.newTab(nil) } else { presentCommandBar(newTab: true) }
+    }
     func reopenClosed() {
         if controller?.tabs.reopenClosed() != nil { Haptics.tap() }
     }

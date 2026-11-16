@@ -69,7 +69,8 @@ Lily is written in Swift with AppKit and SwiftUI and renders pages with WebKit (
 - Can be the default browser; opens `http`/`https` links and HTML files.
 - **Handoff**: a page open in Safari (or another browser) on your iPhone, iPad or another Mac opens in Lily when you click the Handoff icon at the end of the Dock, as a new tab in your main window, also when Lily isn't running yet. It needs Lily as your default browser (Settings → General) and Handoff turned on in System Settings → General → AirDrop & Handoff on both devices. Only web pages are accepted, and trackers are removed from the address as for any opened link. The other direction, offering Lily's current page to your other devices, is off by default, since it shares each page's address and title (Settings → Privacy → Continue pages on other devices).
 - Haptic feedback on Force Touch trackpads for reordering and dragging tabs, pinning, splitting, switching spaces and crossing the space-swipe threshold (Settings → General).
-- Appearance: sidebar text size (Small, Medium, Large), accent color, sidebar color and strength, a paper-like grain, and System / Light / Dark.
+- Appearance (live, no relaunch): **Theme**: System / Light / Dark, accent color, sidebar color and strength, a paper-like grain. **Sidebar**: left or right, font (System, Rounded, Serif, Monospaced; also the command bar), text size (Small, Medium, Large), tab spacing (Compact, Standard, Spacious), close button (on hover, always, never), pinned tab columns (automatic, 2–4), the address field, dimmed sleeping tabs, and which footer buttons show. **Page**: corner radius (0–16 pt) and margin (0–12 pt) of pages and split panes. **Command Bar**: background blur (off, light, strong; dimmed only with Reduce Transparency), top or centered, narrow / standard / wide.
+- Behaviour: what ⌘T opens (command bar, homepage, blank tab), which tab shows after closing one (last used, below, above), ⌘-click / middle-click links in the background or foreground (⇧ flips it), two-finger space swiping, confirm before quitting with several windows or many tabs, and how many search suggestion rows show (0–5). Settings → General → *Reset All Settings to Defaults…* resets look and behaviour only, never history, extensions, site settings or privacy choices. Any menu command's shortcut can be changed in System Settings → Keyboard → Keyboard Shortcuts → App Shortcuts.
 - Release DMGs are universal binaries (arm64 + x86_64).
 
 ## Keyboard shortcuts
@@ -92,7 +93,7 @@ Lily is written in Swift with AppKit and SwiftUI and renders pages with WebKit (
 | ⌘E / ⇧⌘E | Toggle assistant / summarize page |
 | ⌘[ / ⌘] | Back / forward |
 | ⌘R / ⇧⌘R | Reload / reload ignoring cache |
-| ⌘+ / ⌘− / ⌘0 | Zoom in / out / actual size (remembered per site) |
+| ⌘+ / ⌘− / ⌘0 | Zoom in / out / actual size (remembered per site), through 50, 67, 75, 85, 90, 100, 110, 125, 150, 175, 200, 250 and 300% |
 | ⌥⌘D / ⌥⌘, | Dark mode for this site / site settings |
 | ⌘Y | History |
 | ⇧⌘⌫ | Clear browsing data |
@@ -271,7 +272,7 @@ CONTRIBUTING.md           branches, PRs, stacked PRs, releases
 |---|---|---|
 | `App/` | `AppDelegate`, `MainMenu`, `SettingsWindowController`, `DefaultBrowser`, `SelfTest` | Startup, app-wide services, menus, Settings panes, default-browser registration, the self-test |
 | `Browser/` | `BrowserWindowController` (+`Commands`), `Tab`, `TabStore`, `WebViewFactory`, `BrowserWebView`, `SplitView`, `TabSleeper`, `PaneFreezer`, `FindInPage`, `WebInspector`, `LittleLily`, `HTTPSFirst`, `URLResolver`, `DownloadManager`, `WindowToolbar`, `ExtensionSupport` | Windows, tabs and their web views, menus and shortcuts, split panes, sleeping and pausing, find, navigation policy, downloads, the toolbar, extension host protocols |
-| `UI/` | `SidebarView`, `PinnedTabsGrid`, `TabMenu`, `WindowModel`, `CommandBarView`, `CommandBarTextField`, `CommandPalette`, `TabDragDrop`, `HistoryView`, `HistoryPanelView`, `AssistantPanelView`, `AssistantChat`, `SiteSettingsView`, `SiteSecurityView`, `DownloadsView`, `ExtensionToolbarView`, `ExtensionsSettingsView`, `MigrationView`, `Appearance`, `FaviconView`, `FullscreenNotice` | Window chrome: the SwiftUI sidebar with a native AppKit pinned-tile grid, the shared tab menu (SwiftUI and NSMenu), spaces, drag and drop, command bar and palette, toasts and haptics, panels and popovers |
+| `UI/` | `SidebarView`, `PinnedTabsGrid`, `TabMenu`, `WindowModel`, `CommandBarView`, `CommandBarTextField`, `CommandPalette`, `TabDragDrop`, `HistoryView`, `HistoryPanelView`, `AssistantPanelView`, `AssistantChat`, `SiteSettingsView`, `SiteSecurityView`, `DownloadsView`, `ExtensionToolbarView`, `ExtensionsSettingsView`, `MigrationView`, `Appearance`, `Customization`, `FaviconView`, `FullscreenNotice` | Window chrome: the SwiftUI sidebar with a native AppKit pinned-tile grid, the shared tab menu (SwiftUI and NSMenu), spaces, drag and drop, command bar and palette, toasts and haptics, panels and popovers |
 | `IPC/` | `IPCEnvelope`, `IPCRouter`, `ScriptMessageBridge` | The page ↔ native wire format, routing and source checks |
 | `Handlers/` | `PageHandlers`, `PagePayloads`, `PageContext` | Page routes, their schemas and limits, page context for the assistant |
 | `Scripts/` | `ScriptRegistry`, `InjectionManifest` | Loading and validating `injections/manifest.json` into `WKUserScript`s |
