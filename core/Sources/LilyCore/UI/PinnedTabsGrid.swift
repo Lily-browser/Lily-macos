@@ -14,16 +14,19 @@ struct PinnedTabsGrid: NSViewRepresentable {
     let tabs: [WindowModel.TabItem]
     let activeID: UUID?
     let accent: String
+    /// Settings → Appearance → Pinned tab columns; 0 is automatic (as many as fit).
+    var columns = PinnedColumns.automatic
 
     func makeNSView(context: Context) -> PinnedTabsView { PinnedTabsView(window: window) }
 
     func updateNSView(_ view: PinnedTabsView, context: Context) {
+        view.fixedColumns = columns
         view.update(tabs: tabs, activeID: activeID, accent: NSColor(hex: accent))
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: PinnedTabsView, context: Context) -> CGSize? {
         let width = proposal.width ?? 240
-        return CGSize(width: width, height: PinnedTabsView.height(count: tabs.count, width: width))
+        return CGSize(width: width, height: PinnedTabsView.height(count: tabs.count, width: width, fixedColumns: columns))
     }
 }
 
@@ -33,12 +36,20 @@ final class PinnedTabsView: NSView, NSCollectionViewDelegate {
     static let spacing: CGFloat = 8
     static let minTileWidth: CGFloat = 52
 
-    static func columns(width: CGFloat) -> Int { max(1, Int((width + spacing) / (minTileWidth + spacing))) }
+    /// `fixedColumns` > 0 is the user's choice; otherwise as many tiles as fit at their minimum width.
+    static func columns(width: CGFloat, fixedColumns: Int = PinnedColumns.automatic) -> Int {
+        fixedColumns > 0 ? fixedColumns : max(1, Int((width + spacing) / (minTileWidth + spacing)))
+    }
 
-    static func height(count: Int, width: CGFloat) -> CGFloat {
+    static func height(count: Int, width: CGFloat, fixedColumns: Int = PinnedColumns.automatic) -> CGFloat {
         guard count > 0 else { return 0 }
-        let rows = CGFloat((count + columns(width: width) - 1) / columns(width: width))
+        let columns = columns(width: width, fixedColumns: fixedColumns)
+        let rows = CGFloat((count + columns - 1) / columns)
         return rows * tileHeight + (rows - 1) * spacing
+    }
+
+    var fixedColumns = PinnedColumns.automatic {
+        didSet { if fixedColumns != oldValue { needsLayout = true } }
     }
 
     private let model: WindowModel
@@ -99,7 +110,7 @@ final class PinnedTabsView: NSView, NSCollectionViewDelegate {
 
     override func layout() {
         super.layout()
-        let columns = CGFloat(Self.columns(width: bounds.width))
+        let columns = CGFloat(Self.columns(width: bounds.width, fixedColumns: fixedColumns))
         let width = floor((bounds.width - Self.spacing * (columns - 1)) / columns)
         if width > 0, flowLayout.itemSize.width != width {
             flowLayout.itemSize = NSSize(width: width, height: Self.tileHeight)

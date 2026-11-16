@@ -9,6 +9,11 @@ struct SiteSettingsView: View {
     let isPrivate: Bool
     let controller: BrowserWindowController?
 
+    /// The page's zoom, read again after each change (WebKit's pageZoom isn't observable, and
+    /// private windows don't save it to `settings`).
+    @State private var zoom: Double = 1
+    private func readZoom() { zoom = Double(controller?.tabs.active?.webView.pageZoom ?? 1) }
+
     private var site: SiteSettings.Site { settings.site(for: url) }
     private var host: String { SiteSettings.key(for: url) ?? url.host ?? url.absoluteString }
 
@@ -28,11 +33,14 @@ struct SiteSettingsView: View {
                 GridRow {
                     Text("Zoom").foregroundStyle(.secondary)
                     HStack(spacing: 6) {
-                        Button { controller?.zoomOut(nil) } label: { Image(systemName: "minus") }
-                        Text("\(Int((controller?.tabs.active?.webView.pageZoom ?? 1) * 100))%")
+                        // ⌘− / ⌘+'s steps (SiteSettings.zoomLevels).
+                        Button { controller?.zoomOut(nil); readZoom() } label: { Image(systemName: "minus") }
+                            .disabled(zoom <= SiteSettings.zoomLevels[0] + 0.005)
+                        Text("\(Int((zoom * 100).rounded()))%")
                             .monospacedDigit().frame(minWidth: 44)
-                        Button { controller?.zoomIn(nil) } label: { Image(systemName: "plus") }
-                        Button("Reset") { controller?.actualSize(nil) }.buttonStyle(.link)
+                        Button { controller?.zoomIn(nil); readZoom() } label: { Image(systemName: "plus") }
+                            .disabled(zoom >= SiteSettings.zoomLevels[SiteSettings.zoomLevels.count - 1] - 0.005)
+                        Button("Reset") { controller?.actualSize(nil); readZoom() }.buttonStyle(.link)
                     }
                     .controlSize(.small)
                 }
@@ -86,6 +94,7 @@ struct SiteSettingsView: View {
         }
         .padding(16)
         .frame(width: 400)
+        .onAppear(perform: readZoom)
     }
 
     private func permissionPicker(_ keyPath: WritableKeyPath<SiteSettings.Site, SiteSettings.Permission?>) -> some View {

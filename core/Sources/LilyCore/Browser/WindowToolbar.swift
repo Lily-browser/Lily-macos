@@ -18,9 +18,13 @@ final class WindowToolbar: NSObject, NSToolbarDelegate {
 
     let toolbar: NSToolbar
     private let style: BrowserWindowController.Style
+    /// Settings → Appearance → Sidebar position. On the right, the sidebar toggle sits over the
+    /// sidebar at the window's trailing edge and navigation starts right after the traffic lights.
+    private var sidebarOnRight: Bool
 
-    init(style: BrowserWindowController.Style = .regular) {
+    init(style: BrowserWindowController.Style = .regular, sidebarOnRight: Bool = false) {
         self.style = style
+        self.sidebarOnRight = sidebarOnRight
         toolbar = NSToolbar(identifier: style == .little ? "LilyLittleToolbar" : "LilyBrowserToolbar")
         super.init()
         toolbar.delegate = self
@@ -33,8 +37,19 @@ final class WindowToolbar: NSObject, NSToolbarDelegate {
         if style == .little { return [Self.back, Self.forward, Self.reload, .flexibleSpace, Self.copyLink, Self.openInLily] }
         // Navigation sits at the start of the content side: over the sidebar, the traffic lights
         // plus four buttons overflowed narrow sidebars and pushed Reload into the » menu.
-        return [.toggleSidebar, .sidebarTrackingSeparator, Self.back, Self.forward, Self.reload, .flexibleSpace,
-         Self.split, Self.extensions, Self.adBlock, Self.darkMode, Self.siteSettings, Self.newTab]
+        let page: [NSToolbarItem.Identifier] = [Self.back, Self.forward, Self.reload, .flexibleSpace,
+                                                Self.split, Self.extensions, Self.adBlock, Self.darkMode, Self.siteSettings, Self.newTab]
+        // The tracking separator follows the split's (only) divider, wherever the sidebar is.
+        if sidebarOnRight { return page + [.sidebarTrackingSeparator, .flexibleSpace, .toggleSidebar] }
+        return [.toggleSidebar, .sidebarTrackingSeparator] + page
+    }
+
+    /// Rebuilds the items for the sidebar's side (live, from Settings).
+    func setSidebarOnRight(_ right: Bool) {
+        guard style == .regular, right != sidebarOnRight else { return }
+        sidebarOnRight = right
+        while !toolbar.items.isEmpty { toolbar.removeItem(at: toolbar.items.count - 1) }
+        for (index, id) in toolbarDefaultItemIdentifiers(toolbar).enumerated() { toolbar.insertItem(withItemIdentifier: id, at: index) }
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {

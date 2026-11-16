@@ -44,6 +44,11 @@ public final class BrowserWindowController: NSWindowController, NSWindowDelegate
     private var swipeCrossed = false
     private var swallowMomentum = false
     private var commandBarObservation: Task<Void, Never>?
+    /// The sidebar's split item; it sits first or last in `splitController` (Settings → Appearance).
+    private var sidebarItem: NSSplitViewItem?
+    private var sidebarPosition = SidebarPosition.current(AppearanceStyle.Key.sidebarPosition)
+    /// The one UserDefaults observer for this window's AppKit parts (sidebar side, page style).
+    private var defaultsObserver: NSObjectProtocol?
     var onClose: (@MainActor (BrowserWindowController) -> Void)?
     var onSessionChange: (@MainActor () -> Void)?
 
@@ -64,7 +69,8 @@ public final class BrowserWindowController: NSWindowController, NSWindowDelegate
     public init(factory: WebViewFactory, assistant: Assistant, history: History?, isPrivate: Bool = false, style: Style = .regular) {
         self.isPrivate = isPrivate
         self.style = style
-        self.windowToolbar = WindowToolbar(style: style)
+        self.windowToolbar = WindowToolbar(style: style,
+                                           sidebarOnRight: SidebarPosition.current(AppearanceStyle.Key.sidebarPosition) == .right)
         self.history = isPrivate ? nil : history
         self.factory = factory
         self.assistant = assistant
@@ -124,6 +130,52 @@ public final class BrowserWindowController: NSWindowController, NSWindowDelegate
         if !isPrivate && !isLittle { installSpaceSwipe() }
         if !isLittle { sleeper = TabSleeper(store: tabs) }
         if let extensionController { registerWithExtensions(extensionController) }
+        observeCustomization()
+    }
+
+    // MARK: Customization (Settings → Appearance)
+
+    /// Settings apply live: one observer per window. UserDefaults posts on any change (window
+    /// frames included), so this only compares a few values and acts when they differ.
+    private func observeCustomization() {
+        defaultsObserver = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification,
+                                                                  object: UserDefaults.standard, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.applyCustomization() }
+        }
+    }
+
+    func applyCustomization() {
+        let position = SidebarPosition.current(AppearanceStyle.Key.sidebarPosition)
+        if !isLittle, position != sidebarPosition { moveSidebar(to: position) }
+        contentController.apply(PageStyle.current())
+    }
+
+    private static func sidebarAutosaveName(_ position: SidebarPosition) -> String {
+        position == .left ? "LilySidebar" : "LilySidebarRight"
+    }
+
+    /// Moves the sidebar to the other side of the window, keeping its width, and the toolbar's
+    /// navigation with the content.
+    private func moveSidebar(to position: SidebarPosition) {
+        // Set first: the autosave below writes to UserDefaults, which calls back into here.
+        sidebarPosition = position
+        guard let sidebarItem else { return }
+        let splitView = splitController.splitView
+        let width = sidebarItem.isCollapsed ? 280 : sidebarItem.viewController.view.frame.width
+        splitView.autosaveName = nil
+        splitController.removeSplitViewItem(sidebarItem)
+        splitController.insertSplitViewItem(sidebarItem, at: position == .left ? 0 : splitController.splitViewItems.count)
+        splitView.layoutSubtreeIfNeeded()
+        setSidebarWidth(width)
+        splitView.autosaveName = Self.sidebarAutosaveName(position)
+        windowToolbar.setSidebarOnRight(position == .right)
+    }
+
+    private func setSidebarWidth(_ width: CGFloat) {
+        let splitView = splitController.splitView
+        guard sidebarItem?.isCollapsed == false else { return }
+        let divider = sidebarPosition == .left ? width : splitView.bounds.width - width - splitView.dividerThickness
+        splitView.setPosition(divider, ofDividerAt: 0)
     }
 
     /// Two-finger horizontal swipes over the sidebar switch spaces. Events of a swipe are consumed so
@@ -150,7 +202,7 @@ public final class BrowserWindowController: NSWindowController, NSWindowDelegate
         switch event.phase {
         case .mayBegin, .began:
             swallowMomentum = false
-            guard model.panel == .tabs, tabs.spaces.count > 1, let host = sidebarHost,
+            guard model.panel == .tabs, tabs.spaces.count > 1, Preferences.swipesBetweenSpaces, let host = sidebarHost,
                   host.bounds.contains(host.convert(event.locationInWindow, from: nil)) else { swipeAxis = .idle; return false }
             swipeAxis = .undecided
             swipeDelta = .zero
@@ -237,6 +289,7 @@ public final class BrowserWindowController: NSWindowController, NSWindowDelegate
     var downloadFlightSkipReason: String? {
         if window?.contentView == nil || sidebarHost == nil { return "no window" }
         if isSidebarCollapsed { return "sidebar collapsed" }
+        if !Preferences.flag(AppearanceStyle.Key.footerDownloads, default: true) { return "downloads button hidden" }
         if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { return "reduce motion" }
         return nil
     }
@@ -263,6 +316,7 @@ public final class BrowserWindowController: NSWindowController, NSWindowDelegate
         sidebarVC.view = effect
 
         let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebarVC)
+        self.sidebarItem = sidebarItem
         sidebarItem.minimumThickness = 220
         sidebarItem.maximumThickness = 460
         sidebarItem.canCollapse = true
@@ -273,10 +327,11 @@ public final class BrowserWindowController: NSWindowController, NSWindowDelegate
         contentItem.titlebarSeparatorStyle = .none
 
         splitController.splitView.dividerStyle = .thin
-        splitController.splitView.autosaveName = "LilySidebar"
-        splitController.addSplitViewItem(sidebarItem)
-        splitController.addSplitViewItem(contentItem)
-        if sidebarItem.viewController.view.frame.width < 1 { splitController.splitView.setPosition(280, ofDividerAt: 0) }
+        splitController.splitView.autosaveName = Self.sidebarAutosaveName(sidebarPosition)
+        // Settings → Appearance → Sidebar position: the sidebar is the first or the last item.
+        let items = sidebarPosition == .left ? [sidebarItem, contentItem] : [contentItem, sidebarItem]
+        items.forEach(splitController.addSplitViewItem)
+        if sidebarPosition == .left, sidebarItem.viewController.view.frame.width < 1 { splitController.splitView.setPosition(280, ofDividerAt: 0) }
 
         // Root: the split view, with the command bar overlay above it (hidden while closed so it
         // never intercepts clicks).
@@ -287,6 +342,10 @@ public final class BrowserWindowController: NSWindowController, NSWindowDelegate
         overlayHost = overlay
         window?.contentViewController = root
         window?.setContentSize(NSSize(width: 1320, height: 860))
+        if sidebarPosition == .right, sidebarItem.viewController.view.frame.width < 1 {
+            splitController.splitView.layoutSubtreeIfNeeded()
+            setSidebarWidth(280)
+        }
         observeCommandBar()
     }
 
@@ -326,7 +385,9 @@ public final class BrowserWindowController: NSWindowController, NSWindowDelegate
         showWindow(nil)
     }
 
-    var isSidebarCollapsed: Bool { splitController.splitViewItems.first?.isCollapsed ?? false }
+    var isSidebarCollapsed: Bool { sidebarItem?.isCollapsed ?? false }
+    /// The split view controller holding the sidebar (nil in Little Lily, which has none).
+    var sidebarSplit: NSSplitViewController? { sidebarItem == nil ? nil : splitController }
 
     // MARK: Tab display
 
@@ -421,6 +482,8 @@ public final class BrowserWindowController: NSWindowController, NSWindowDelegate
         commandBarObservation?.cancel()
         sleeper?.stop()
         if let swipeMonitor { NSEvent.removeMonitor(swipeMonitor) }
+        if let defaultsObserver { NotificationCenter.default.removeObserver(defaultsObserver) }
+        defaultsObserver = nil
         contentController.tearDown()
 
         model.assistant.detach()

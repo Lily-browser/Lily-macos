@@ -19,7 +19,10 @@ public final class History {
     static let coalesceInterval: TimeInterval = 30 * 60
 
     /// Most recent first.
-    public private(set) var visits: [Visit] = [] { didSet { searchText = nil } }
+    public private(set) var visits: [Visit] = [] { didSet { searchText = nil; generation &+= 1 } }
+    /// Bumped on every change, so caches built from `visits` (the command bar's completion index)
+    /// know when to rebuild without comparing 20,000 visits.
+    @ObservationIgnored public private(set) var generation = 0
     /// Lowercased title + address per visit, built on the first search after a change, so typing in
     /// the command bar doesn't lowercase the whole history on every keystroke.
     @ObservationIgnored private var searchText: [NSString]?
@@ -63,7 +66,10 @@ public final class History {
         guard url.scheme == "https" || url.scheme == "http" else { return }
         let title = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let time = now()
-        if let index = visits.firstIndex(where: { $0.url == url }), time.timeIntervalSince(visits[index].visitedAt) < Self.coalesceInterval {
+        // Visits are newest first: only those within the coalescing window can be updated, so the
+        // scan stops at the first older one instead of comparing every URL in history per page load.
+        let recent = visits.prefix { time.timeIntervalSince($0.visitedAt) < Self.coalesceInterval }
+        if let index = recent.firstIndex(where: { $0.url == url }) {
             var visit = visits.remove(at: index)
             visit.visitedAt = time
             if !title.isEmpty { visit.title = title }

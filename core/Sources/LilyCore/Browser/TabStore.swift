@@ -129,8 +129,42 @@ public final class TabStore {
         return tab
     }
 
-    public func close(_ id: UUID) {
+    /// Settings → Tabs → After closing a tab, show: which tab takes over when the active one closes.
+    public enum AfterClose: String, CaseIterable, Sendable {
+        /// The most recently used remaining tab in the space (Arc-like).
+        case lastUsed
+        /// The tab that was below it in the space's list (the one above when it was last).
+        case below
+        /// The tab that was above it (the one below when it was first).
+        case above
+
+        public static let `default` = AfterClose.lastUsed
+
+        public init(stored: String?) { self = stored.flatMap(AfterClose.init(rawValue:)) ?? .default }
+
+        public static var current: AfterClose { AfterClose(stored: UserDefaults.standard.string(forKey: Preferences.Key.afterClosingTab)) }
+
+        var label: String {
+            switch self {
+            case .lastUsed: return "Last used tab"
+            case .below: return "Tab below"
+            case .above: return "Tab above"
+            }
+        }
+    }
+
+    /// `then: nil` follows Settings → Tabs → After closing a tab.
+    public func close(_ id: UUID, then: AfterClose? = nil) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+        // Its neighbours in its space, for "tab below/above" (read before it leaves the list).
+        let wasActive = activeID == id
+        let mode = wasActive ? (then ?? AfterClose.current) : .lastUsed
+        var neighbours: (above: UUID?, below: UUID?) = (nil, nil)
+        if wasActive, mode != .lastUsed {
+            let space = tabs[index].spaceID
+            neighbours.above = tabs[..<index].last { $0.spaceID == space }?.id
+            neighbours.below = tabs[(index + 1)...].first { $0.spaceID == space }?.id
+        }
         leaveSplit(id)
         let tab = tabs.remove(at: index)
         if let url = tab.url, url.scheme != "about" {
@@ -140,10 +174,15 @@ public final class TabStore {
         onTabRemoved?(tab)
         router.forget(tab: tab.id)
         tab.tearDown()
-        if activeID == id {
-            // Arc-like: fall back to the most recently used remaining tab in this space.
-            let next = visibleTabs.max(by: { $0.lastActivated < $1.lastActivated })
-            setActive(next?.id)
+        if wasActive {
+            let next: UUID?
+            switch mode {
+            case .lastUsed: next = nil
+            case .below: next = neighbours.below ?? neighbours.above
+            case .above: next = neighbours.above ?? neighbours.below
+            }
+            // Arc-like by default: fall back to the most recently used remaining tab in this space.
+            setActive(next ?? visibleTabs.max(by: { $0.lastActivated < $1.lastActivated })?.id)
         } else {
             onChange?()
         }

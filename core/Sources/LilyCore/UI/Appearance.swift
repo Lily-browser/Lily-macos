@@ -11,6 +11,25 @@ enum AppearanceStyle {
         static let grain = "AppearanceGrain"
         static let appAppearance = "AppearanceMode"
         static let sidebarTextSize = "AppearanceSidebarTextSize"
+        // Settings → Appearance → Sidebar (Customization.swift has the typed values and defaults).
+        static let sidebarPosition = "AppearanceSidebarPosition"
+        static let interfaceFont = "AppearanceInterfaceFont"
+        static let tabDensity = "AppearanceTabDensity"
+        static let closeButton = "AppearanceTabCloseButton"
+        static let dimSleepingTabs = "AppearanceDimSleepingTabs"
+        static let showsAddressField = "AppearanceShowAddressField"
+        static let footerAssistant = "AppearanceFooterAssistant"
+        static let footerHistory = "AppearanceFooterHistory"
+        static let footerDownloads = "AppearanceFooterDownloads"
+        static let footerNewTab = "AppearanceFooterNewTab"
+        static let pinnedColumns = "AppearancePinnedColumns"
+        // Settings → Appearance → Page.
+        static let pageCornerRadius = "AppearancePageCornerRadius"
+        static let pagePadding = "AppearancePagePadding"
+        // Settings → Appearance → Command Bar.
+        static let commandBarBlur = "AppearanceCommandBarBlur"
+        static let commandBarPosition = "AppearanceCommandBarPosition"
+        static let commandBarWidth = "AppearanceCommandBarWidth"
     }
 
     static let defaultAccent = "#5B4CF5"
@@ -35,13 +54,11 @@ enum AppearanceStyle {
 
 /// Settings → Appearance → Sidebar text size: tab titles, split pills, the space name and the
 /// address. Rows and favicons grow with the text so the list keeps its rhythm.
-enum SidebarTextSize: String, CaseIterable, Sendable {
+/// `init(stored:)` (StoredChoice): anything unknown falls back to the default.
+enum SidebarTextSize: String, StoredChoice {
     case small, medium, large
 
     static let `default` = SidebarTextSize.medium
-
-    /// The stored choice; anything unknown falls back to the default.
-    init(stored: String) { self = SidebarTextSize(rawValue: stored) ?? .default }
 
     var label: String { rawValue.capitalized }
 

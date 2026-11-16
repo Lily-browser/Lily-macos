@@ -111,6 +111,23 @@ public final class SiteSettings {
         site(for: url)[keyPath: kind] ?? .ask
     }
 
+    /// The zoom levels ⌘− / ⌘+, the site-settings popover and Settings → Websites → Default zoom
+    /// all use, Safari-like.
+    nonisolated static let zoomLevels: [Double] = [0.5, 0.67, 0.75, 0.85, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0]
+
+    /// The next level from `current` in a direction. A zoom between levels (an older step, a
+    /// stored site zoom) goes to the nearest level that way; at either end it stays put.
+    nonisolated static func zoomLevel(after current: Double, zoomingIn: Bool) -> Double {
+        let tolerance = 0.005
+        if zoomingIn { return zoomLevels.first { $0 > current + tolerance } ?? max(current, zoomLevels[zoomLevels.count - 1]) }
+        return zoomLevels.last { $0 < current - tolerance } ?? min(current, zoomLevels[0])
+    }
+
+    /// True at the smallest or largest level (or beyond it).
+    nonisolated static func isZoomLimit(_ zoom: Double) -> Bool {
+        zoom <= zoomLevels[0] + 0.005 || zoom >= zoomLevels[zoomLevels.count - 1] - 0.005
+    }
+
     static var defaultZoom: Double {
         let stored = UserDefaults.standard.double(forKey: Preferences.Key.defaultZoom)
         return stored > 0 ? stored : 1

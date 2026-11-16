@@ -5,13 +5,17 @@ struct SidebarView: View {
     /// Fills the sidebar's hosting view, so frames measured in it are in the host's coordinates.
     static let coordinateSpace = "Lily.sidebar"
     @Bindable var window: WindowModel
+    @AppStorage(AppearanceStyle.Key.showsAddressField) private var showsAddress = true
+    @AppStorage(AppearanceStyle.Key.interfaceFont) private var font = InterfaceFont.default.rawValue
 
     var body: some View {
         VStack(spacing: 0) {
-            AddressPill(window: window)
-                .padding(.horizontal, 10)
-                .padding(.top, 6)
-                .padding(.bottom, 6)
+            if showsAddress {
+                AddressPill(window: window)
+                    .padding(.horizontal, 10)
+                    .padding(.top, 6)
+                    .padding(.bottom, 6)
+            }
             switch window.panel {
             case .tabs:
                 // The drag offset moves the container, so the outgoing and incoming spaces share it
@@ -65,6 +69,7 @@ struct SidebarView: View {
             }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: window.toast)
+        .fontDesign(InterfaceFont(stored: font).design)
         .coordinateSpace(name: Self.coordinateSpace)
     }
 }
@@ -165,14 +170,20 @@ private struct AddressPill: View {
 private struct TabListView: View {
     @Bindable var window: WindowModel
     @AppStorage(AppearanceStyle.Key.accent) private var accent = AppearanceStyle.defaultAccent
-    /// Read once here and handed to the rows as a plain value: thousands of rows don't each observe it.
+    /// Read once here and handed to the rows as a plain value: thousands of rows don't each observe them.
     @AppStorage(AppearanceStyle.Key.sidebarTextSize) private var storedTextSize = SidebarTextSize.default.rawValue
+    @AppStorage(AppearanceStyle.Key.tabDensity) private var density = TabDensity.default.rawValue
+    @AppStorage(AppearanceStyle.Key.closeButton) private var closeButton = CloseButtonVisibility.default.rawValue
+    @AppStorage(AppearanceStyle.Key.dimSleepingTabs) private var dimSleeping = true
+    @AppStorage(AppearanceStyle.Key.pinnedColumns) private var pinnedColumns = PinnedColumns.automatic
 
     var body: some View {
-        let textSize = SidebarTextSize(stored: storedTextSize)
+        let row = SidebarRowStyle(textSize: SidebarTextSize(stored: storedTextSize), density: TabDensity(stored: density),
+                                       closeButton: CloseButtonVisibility(stored: closeButton), dimsSleepingTabs: dimSleeping)
         List {
             if !window.pinnedTabs.isEmpty {
-                PinnedTabsGrid(window: window, tabs: window.pinnedTabs, activeID: window.activeID, accent: accent)
+                PinnedTabsGrid(window: window, tabs: window.pinnedTabs, activeID: window.activeID, accent: accent,
+                               columns: PinnedColumns.clamped(pinnedColumns))
                     .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 8, trailing: 8))
                     .listRowBackground(Color.clear)
                     .selectionDisabled()
@@ -181,13 +192,13 @@ private struct TabListView: View {
                 ForEach(window.regularItems) { item in
                     switch item {
                     case .tab(let tab):
-                        TabRow(tab: tab, window: window, textSize: textSize)
+                        TabRow(tab: tab, window: window, row: row)
                             .listRowBackground(ActiveRowBackground(active: tab.id == window.activeID))
                             // Reordering stays with onMove; this lets the row also be dropped on a
                             // pinned tile, a space or a split, or into another app as its address.
                             .itemProvider { TabDrag.provider(for: tab) }
                     case .split(let layout, let members):
-                        SplitPill(layout: layout, members: members, window: window, textSize: textSize, accent: accent)
+                        SplitPill(layout: layout, members: members, window: window, row: row, accent: accent)
                             .listRowInsets(EdgeInsets(top: 3, leading: 6, bottom: 3, trailing: 6))
                             .listRowBackground(Color.clear)
                     }
@@ -197,7 +208,7 @@ private struct TabListView: View {
                 .onInsert(of: [.lilyTab, .url]) { row, providers in
                     Task { if let drop = await TabDrag.load(providers) { window.dropInList(drop, atRow: row) } }
                 }
-                NewTabRow(textSize: textSize) { window.newTab() }
+                NewTabRow(row: row) { window.newTab() }
                     .selectionDisabled()
             }
         }
@@ -214,7 +225,7 @@ private struct SplitPill: View {
     let layout: SplitLayout
     let members: [WindowModel.TabItem]
     let window: WindowModel
-    let textSize: SidebarTextSize
+    let row: SidebarRowStyle
     let accent: String
     @State private var dropTargeted = false
 
@@ -252,11 +263,11 @@ private struct SplitPill: View {
             let focused = tab.id == window.activeID
             HStack(spacing: 5) {
                 FaviconView(page: tab.url, fetch: tab.isSleeping ? nil : tab.favicon ?? tab.url?.faviconGuess, remember: !window.isPrivate,
-                            size: textSize.favicon - 2)
-                if !compact { Text(tab.title).font(.system(size: textSize.titleSize - 1)).lineLimit(1).truncationMode(.tail) }
+                            size: row.favicon - 2)
+                if !compact { Text(tab.title).font(.system(size: row.titleSize - 1)).lineLimit(1).truncationMode(.tail) }
             }
             .frame(maxWidth: .infinity, alignment: compact ? .center : .leading)
-            .padding(.horizontal, 7).frame(height: textSize.rowHeight)
+            .padding(.horizontal, 7).frame(height: row.rowHeight)
             .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(focused ? AnyShapeStyle(Color(hex: accent).opacity(0.3)) : AnyShapeStyle(.background.opacity(0.35))))
             .contentShape(Rectangle())
@@ -270,32 +281,34 @@ private struct SplitPill: View {
 private struct TabRow: View {
     let tab: WindowModel.TabItem
     let window: WindowModel
-    let textSize: SidebarTextSize
+    let row: SidebarRowStyle
     @State private var hovering = false
+    /// Settings → Appearance → Dim sleeping tabs.
+    private var dimmed: Bool { tab.isSleeping && row.dimsSleepingTabs }
 
     var body: some View {
         HStack(spacing: 8) {
             ZStack {
                 // A sleeping or restored tab's site isn't open: its kept icon only, no request.
-                FaviconView(page: tab.url, fetch: tab.isSleeping ? nil : tab.favicon ?? tab.url?.faviconGuess, remember: !window.isPrivate, size: textSize.favicon)
-                    .opacity(tab.isSleeping ? 0.45 : 1)
-                    .saturation(tab.isSleeping ? 0 : 1)
+                FaviconView(page: tab.url, fetch: tab.isSleeping ? nil : tab.favicon ?? tab.url?.faviconGuess, remember: !window.isPrivate, size: row.favicon)
+                    .opacity(dimmed ? 0.45 : 1)
+                    .saturation(dimmed ? 0 : 1)
                 if tab.isLoading { ProgressView().controlSize(.mini).scaleEffect(0.8) }
             }
-            .frame(width: textSize.favicon + 2)
-            Text(tab.title).font(.system(size: textSize.titleSize)).lineLimit(1).truncationMode(.tail)
-                .foregroundStyle(tab.isSleeping ? .secondary : .primary)
+            .frame(width: row.favicon + 2)
+            Text(tab.title).font(.system(size: row.titleSize)).lineLimit(1).truncationMode(.tail)
+                .foregroundStyle(dimmed ? .secondary : .primary)
                 .help(tab.isSleeping ? "Sleeping to save memory. Opens where you left off." : tab.title)
             Spacer(minLength: 0)
             if tab.inSplit {
                 Image(systemName: "rectangle.split.2x1").font(.system(size: 10)).foregroundStyle(.tint).help("In Split View")
             }
-            if hovering && !tab.isPinned {
+            if row.closeButton.shows(hovering: hovering) && !tab.isPinned {
                 Button { window.close(tab.id) } label: { Image(systemName: "xmark").font(.system(size: 10, weight: .bold)) }
                     .buttonStyle(.plain).foregroundStyle(.secondary).help("Close Tab (⌘W)")
             }
         }
-        .frame(height: textSize.rowHeight)
+        .frame(height: row.rowHeight)
         .contentShape(Rectangle())
         .onTapGesture { window.activate(tab.id) }
         .onHover { hovering = $0 }
@@ -305,7 +318,7 @@ private struct TabRow: View {
 
 /// The "New Tab" row at the end of the list: the whole row is the button, not just its glyph and text.
 private struct NewTabRow: View {
-    let textSize: SidebarTextSize
+    let row: SidebarRowStyle
     let action: () -> Void
     @State private var hovering = false
 
@@ -313,13 +326,13 @@ private struct NewTabRow: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Image(systemName: "plus")
-                    .font(.system(size: textSize.titleSize - 2, weight: .semibold))
-                    .frame(width: textSize.favicon + 2)
-                Text("New Tab").font(.system(size: textSize.titleSize))
+                    .font(.system(size: row.titleSize - 2, weight: .semibold))
+                    .frame(width: row.favicon + 2)
+                Text("New Tab").font(.system(size: row.titleSize))
                 Spacer(minLength: 0)
             }
             .foregroundStyle(.secondary)
-            .frame(height: textSize.rowHeight)
+            .frame(height: row.rowHeight)
             // Drawn a little past the content so it lines up with the active tab's highlight.
             .background {
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
@@ -350,32 +363,41 @@ private struct ActiveRowBackground: View {
 /// Right-click menu for a tab.
 private struct SidebarFooter: View {
     @Bindable var window: WindowModel
+    // Settings → Appearance → Sidebar footer; the space switcher always shows.
+    @AppStorage(AppearanceStyle.Key.footerAssistant) private var showsAssistant = true
+    @AppStorage(AppearanceStyle.Key.footerHistory) private var showsHistory = true
+    @AppStorage(AppearanceStyle.Key.footerDownloads) private var showsDownloads = true
+    @AppStorage(AppearanceStyle.Key.footerNewTab) private var showsNewTab = true
 
     var body: some View {
         HStack(spacing: 2) {
-            Button { window.showsAssistant.toggle() } label: {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 12, weight: .medium))
-                    .frame(width: 30)
-                    .padding(.horizontal, 8).frame(height: 28)
-                    .background(window.showsAssistant ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear),
-                                in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                    .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(window.showsAssistant ? .primary : .secondary)
-            .help("Assistant (⌘E)")
+            if showsAssistant { assistantButton }
             if !window.isPrivate { SpaceSwitcher(window: window).frame(maxWidth: .infinity) } else { Spacer() }
-            if window.controller?.history != nil {
+            if showsHistory, window.controller?.history != nil {
                 NavButton(symbol: "clock", help: "History") { window.panel = window.panel == .history ? .tabs : .history }
                     .foregroundStyle(window.panel == .history ? .primary : .secondary)
             }
-            DownloadsButton(downloads: DownloadManager.shared, window: window)
+            if showsDownloads { DownloadsButton(downloads: DownloadManager.shared, window: window) }
             if window.canReopenClosed {
                 NavButton(symbol: "arrow.uturn.backward", help: "Reopen Closed Tab (⇧⌘T)") { window.reopenClosed() }
             }
-            NavButton(symbol: "plus", help: "New Tab (⌘T)", width: 32, height: 30) { window.newTab() }
+            if showsNewTab { NavButton(symbol: "plus", help: "New Tab (⌘T)", width: 32, height: 30) { window.newTab() } }
         }
+    }
+
+    private var assistantButton: some View {
+        Button { window.showsAssistant.toggle() } label: {
+            Image(systemName: "sparkles")
+                .font(.system(size: 12, weight: .medium))
+                .frame(width: 30)
+                .padding(.horizontal, 8).frame(height: 28)
+                .background(window.showsAssistant ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear),
+                            in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(window.showsAssistant ? .primary : .secondary)
+        .help("Assistant (⌘E)")
     }
 }
 

@@ -58,6 +58,8 @@ final class CommandBarModel: Identifiable {
     /// Settings → Privacy → Search engine suggestions and the engine, read when the bar opens.
     @ObservationIgnored var suggestionsEnabled: Bool
     @ObservationIgnored var searchEngine: Preferences.SearchEngine
+    /// Settings → Privacy → Suggestion rows (0–5), read when the bar opens. 0 sends nothing.
+    @ObservationIgnored var suggestionRows: Int
     /// Waits this long after a keystroke before asking the engine (typing on cancels the request).
     @ObservationIgnored var suggestionDelay: Duration = .milliseconds(120)
     static let engineCacheSize = 24
@@ -77,7 +79,8 @@ final class CommandBarModel: Identifiable {
         self.window = window
         isPalette = palette
         self.commands = palette ? (commands ?? PaletteCommands.all(in: window)) : []
-        suggestionsEnabled = Preferences.searchSuggestionsEnabled
+        suggestionRows = Preferences.searchSuggestionRows
+        suggestionsEnabled = Preferences.searchSuggestionsEnabled && suggestionRows > 0
         searchEngine = Preferences.searchEngine
         selection = defaultSelection
         buildIndex()
@@ -135,16 +138,25 @@ final class CommandBarModel: Identifiable {
         let tabs = window.tabs.compactMap(\.url)
         let history = window.controller?.history
         let bookmarks = window.controller?.bookmarks
+        let includeBookmarks = !window.isPrivate
+        let key = CompletionIndexKey(history: history?.generation, bookmarks: includeBookmarks ? bookmarks?.generation : nil,
+                                     tabs: tabs, built: Date())
+        // Reopening the bar with nothing changed reuses the last index instead of rebuilding it.
+        if let cached = window.completionIndexCache, cached.key.canReuse(for: key) {
+            localIndex = cached.index
+            return
+        }
         let visits = history?.visits ?? []
-        let bookmarked = window.isPrivate ? [] : (bookmarks?.links.compactMap(\.url) ?? [])
+        let bookmarked = includeBookmarks ? (bookmarks?.links.compactMap(\.url) ?? []) : []
         guard !visits.isEmpty || !bookmarked.isEmpty || !tabs.isEmpty else { return }
-        indexTask = Task { [weak self] in
+        indexTask = Task { [weak self, weak window] in
             let index = await Task.detached(priority: .userInitiated) {
                 AddressCompletion.index(visits: visits.map { AddressCompletion.Visit(url: $0.url, title: $0.title, date: $0.visitedAt) },
-                                        bookmarks: bookmarked, tabs: tabs, now: Date())
+                                        bookmarks: bookmarked, tabs: tabs, now: key.built)
             }.value
-            guard !Task.isCancelled, let self else { return }
-            self.localIndex = index
+            guard !Task.isCancelled else { return }
+            window?.completionIndexCache = (key, index)
+            self?.localIndex = index
         }
     }
 
@@ -274,7 +286,7 @@ final class CommandBarModel: Identifiable {
         // Engine suggestions after what was typed, before pages, leaving room for a few pages.
         let engine = engineSuggestions(for: q).filter { $0.lowercased() != needle }
         let engineRoom = max(0, Self.maxRows - fixed - min(local.count, 3))
-        out += engine.prefix(min(SearchSuggestions.maxSuggestions, engineRoom)).map { .search($0, engine: Preferences.searchEngine.displayName) }
+        out += engine.prefix(min(suggestionRows, engineRoom)).map { .search($0, engine: Preferences.searchEngine.displayName) }
         out += local.prefix(max(0, Self.maxRows - out.count))
         // Commands that match go right after "open" and "search", ahead of pages.
         if isPalette { out.insert(contentsOf: matchingCommands(q, limit: 3), at: min(out.count, fixed)) }
@@ -318,36 +330,62 @@ extension Array {
 struct CommandBarOverlay: View {
     @Bindable var window: WindowModel
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    // Settings → Appearance → Command Bar, and the sidebar's font.
+    @AppStorage(AppearanceStyle.Key.commandBarBlur) private var blur = CommandBarBlur.default.rawValue
+    @AppStorage(AppearanceStyle.Key.commandBarPosition) private var position = CommandBarPosition.default.rawValue
+    @AppStorage(AppearanceStyle.Key.commandBarWidth) private var width = CommandBarWidth.default.rawValue
+    @AppStorage(AppearanceStyle.Key.interfaceFont) private var font = InterfaceFont.default.rawValue
 
     var body: some View {
-        ZStack(alignment: .top) {
-            if let bar = window.commandBar {
-                backdrop
-                    .ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    .onTapGesture { window.dismissCommandBar() }
-                    .transition(.opacity)
-                CommandBarCard(bar: bar, dismiss: { window.dismissCommandBar() })
-                    .padding(.top, 96)
-                    .transition(.asymmetric(insertion: .scale(scale: 0.94, anchor: .top).combined(with: .opacity),
-                                            removal: .scale(scale: 0.97, anchor: .top).combined(with: .opacity)))
-                    .id(bar.id)
+        GeometryReader { geometry in
+            let centered = CommandBarPosition(stored: position) == .center
+            // Centered: the field sits at the middle, suggestions open below it, so the bar doesn't
+            // move as rows come and go.
+            let top = centered ? max(CommandBarPosition.topInset / 2, geometry.size.height / 2 - CommandBarCard.fieldHeight / 2)
+                : CommandBarPosition.topInset
+            let listHeight = min(CommandBarCard.maxListHeight, max(120, geometry.size.height - top - CommandBarCard.fieldHeight - 24))
+            ZStack(alignment: .top) {
+                if let bar = window.commandBar {
+                    backdrop
+                        .ignoresSafeArea()
+                        .contentShape(Rectangle())
+                        .onTapGesture { window.dismissCommandBar() }
+                        .transition(.opacity)
+                    CommandBarCard(bar: bar, width: min(CommandBarWidth(stored: width).points, max(320, geometry.size.width - 40)),
+                                   maxListHeight: listHeight, dismiss: { window.dismissCommandBar() })
+                        .padding(.top, top)
+                        .transition(reduceMotion ? .opacity
+                            : .asymmetric(insertion: .scale(scale: 0.94, anchor: .top).combined(with: .opacity),
+                                          removal: .scale(scale: 0.97, anchor: .top).combined(with: .opacity)))
+                        .id(bar.id)
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .fontDesign(InterfaceFont(stored: font).design)
         .animation(.spring(response: 0.32, dampingFraction: 0.82), value: window.commandBar?.id)
         .appAccent()
     }
 
-    /// The page and sidebar behind the bar, softly blurred and a little dimmed; just dimmed with
-    /// Reduce Transparency (where a material would turn opaque and hide the page).
+    /// The page and sidebar behind the bar, blurred (Settings → Appearance → Background blur) and a
+    /// little dimmed; just dimmed with Reduce Transparency (where a material would turn opaque and
+    /// hide the page) or with the blur off.
     @ViewBuilder private var backdrop: some View {
-        if reduceTransparency {
+        switch reduceTransparency ? .off : CommandBarBlur(stored: blur) {
+        case .off:
             Color.black.opacity(0.18)
-        } else {
+        case .light:
             ZStack {
                 WindowBackdropBlur()
                 Color.black.opacity(0.10)
+            }
+        case .strong:
+            // A second, thinner material over the blur softens the page much further.
+            ZStack {
+                WindowBackdropBlur()
+                Rectangle().fill(.ultraThinMaterial)
+                Color.black.opacity(0.14)
             }
         }
     }
@@ -375,7 +413,11 @@ private struct WindowBackdropBlur: NSViewRepresentable {
 }
 
 private struct CommandBarCard: View {
+    static let fieldHeight: CGFloat = 64
+    static let maxListHeight: CGFloat = 460
     @Bindable var bar: CommandBarModel
+    var width = CommandBarWidth.default.points
+    var maxListHeight = CommandBarCard.maxListHeight
     let dismiss: () -> Void
 
     private var placeholder: String {
@@ -397,7 +439,7 @@ private struct CommandBarCard: View {
                 }
             }
             .padding(.horizontal, 20)
-            .frame(height: 64)
+            .frame(height: Self.fieldHeight)
 
             let suggestions = bar.suggestions
             if !suggestions.isEmpty {
@@ -415,13 +457,13 @@ private struct CommandBarCard: View {
                         }
                         .padding(8)
                     }
-                    .frame(maxHeight: 460)
+                    .frame(maxHeight: maxListHeight)
                     .scrollBounceBehavior(.basedOnSize)
                     .onChange(of: bar.selection) { _, index in if index >= 0 { proxy.scrollTo(index) } }
                 }
             }
         }
-        .frame(width: 680)
+        .frame(width: width)
         .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(.separator.opacity(0.6), lineWidth: 0.5))
         .shadow(color: .black.opacity(0.28), radius: 40, y: 18)
@@ -495,5 +537,20 @@ extension URL {
     var faviconGuess: URL? {
         guard let scheme, scheme.hasPrefix("http"), let host else { return nil }
         return URL(string: "\(scheme)://\(host)/favicon.ico")
+    }
+}
+
+/// What a completion index was built from. Reused while history, bookmarks and the open tabs'
+/// addresses are unchanged, for at most `maxAge` (frecency weights age with time).
+struct CompletionIndexKey: Equatable {
+    static let maxAge: TimeInterval = 15 * 60
+    let history: Int?
+    let bookmarks: Int?
+    let tabs: [URL]
+    let built: Date
+
+    func canReuse(for current: CompletionIndexKey) -> Bool {
+        history == current.history && bookmarks == current.bookmarks && tabs == current.tabs
+            && current.built.timeIntervalSince(built) < Self.maxAge
     }
 }

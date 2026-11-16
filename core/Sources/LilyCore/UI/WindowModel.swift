@@ -5,6 +5,8 @@ import Observation
 /// `BrowserWindowController` owns it and refreshes it from `TabStore`; views call back through it.
 @MainActor @Observable
 public final class WindowModel {
+    /// The command bar's completion index, kept between openings while its sources are unchanged.
+    @ObservationIgnored var completionIndexCache: (key: CompletionIndexKey, index: AddressCompletion.Index)?
     public struct TabItem: Identifiable, Equatable {
         public let id: UUID
         var title: String
@@ -46,11 +48,16 @@ public final class WindowModel {
     var regularItems: [ListItem] {
         var items: [ListItem] = []
         var placed = Set<Int>()
+        // Looked up once, not per row: scanning the groups (and the tabs for each member) per row
+        // made every sidebar update quadratic in the number of tabs.
+        let groupOf = Dictionary(splitGroups.enumerated().flatMap { index, group in group.tabIDs.map { ($0, index) } },
+                                 uniquingKeysWith: { first, _ in first })
+        let byID = groupOf.isEmpty ? [:] : Dictionary(tabs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         for tab in regularTabs {
-            if let index = splitGroups.firstIndex(where: { $0.tabIDs.contains(tab.id) }) {
+            if let index = groupOf[tab.id] {
                 guard placed.insert(index).inserted else { continue }
                 let group = splitGroups[index]
-                items.append(.split(group.layout, group.tabIDs.compactMap { id in tabs.first { $0.id == id } }))
+                items.append(.split(group.layout, group.tabIDs.compactMap { byID[$0] }))
             } else {
                 items.append(.tab(tab))
             }
@@ -99,10 +106,11 @@ public final class WindowModel {
 
     /// Rebuilds the snapshot from the tab store; called once per coalesced change.
     func refresh(from store: TabStore) {
+        let inSplits = Set(store.splits.flatMap(\.tabIDs))
         let items = store.visibleTabs.map { tab in
             TabItem(id: tab.id, title: tab.title.isEmpty ? (tab.url?.host ?? "New Tab") : tab.title, url: tab.url,
                     favicon: tab.faviconURL, isLoading: tab.isLoading, isPinned: tab.isPinned,
-                    isYouTubeVideo: tab.youtubeVideoID != nil, inSplit: store.splitGroup(containing: tab.id) != nil,
+                    isYouTubeVideo: tab.youtubeVideoID != nil, inSplit: inSplits.contains(tab.id),
                     isSleeping: tab.isSleeping)
         }
         hasSplit = store.split != nil
@@ -156,7 +164,10 @@ public final class WindowModel {
         controller?.tabs.close(id)
         Haptics.tap()
     }
-    func newTab() { presentCommandBar(newTab: true) }
+    /// The New Tab buttons do what ⌘T does (Settings → Tabs → New tab opens).
+    func newTab() {
+        if let controller { controller.newTab(nil) } else { presentCommandBar(newTab: true) }
+    }
     func reopenClosed() {
         if controller?.tabs.reopenClosed() != nil { Haptics.tap() }
     }
