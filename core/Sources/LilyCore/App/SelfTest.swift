@@ -439,6 +439,29 @@ enum SelfTest {
                   && !palette.contains("Copy") && !palette.contains("Command Palette…"),
                   ["count": .number(Double(palette.count)), "sample": .array(palette.prefix(8).map(JSONValue.string))])
 
+            // ⌘T, then typing the start of a visited site: the field takes focus and completes the
+            // host inline (selected), and Delete takes the completion away. Nothing goes to a search engine.
+            window.model.presentCommandBar(newTab: true)
+            window.model.commandBar?.suggestionFetcher = NoSearchSuggestions()
+            var completionField: NSTextView?
+            let barReady = await waitUntil(5) {
+                completionField = window.window?.contentView.flatMap(Self.commandBarField)?.currentEditor() as? NSTextView
+                return completionField != nil && window.model.commandBar?.localIndex != nil
+            }
+            var completed = "", completedSelection = NSRange(), afterDelete = ""
+            if barReady, let editor = completionField {
+                editor.insertText("selft", replacementRange: editor.selectedRange())
+                completed = editor.string
+                completedSelection = editor.selectedRange()
+                editor.doCommand(by: #selector(NSResponder.deleteBackward(_:)))
+                afterDelete = editor.string
+            }
+            let topRow = window.model.commandBar?.suggestions.first
+            window.model.dismissCommandBar()
+            check("command bar inline completion", barReady && completed == "selftest.lily.test"
+                  && completedSelection == NSRange(location: 5, length: 13) && afterDelete == "selft" && topRow != nil,
+                  ["ready": .bool(barReady), "completed": .string(completed), "afterDelete": .string(afterDelete)])
+
             // Lily's own pages run without page JavaScript, keep the tab's address and stay out of history.
             let internalTab = window.tabs.create(url: nil, activate: false)
             internalTab.showInternalPage("<!doctype html><title>internal</title><script>document.title = 'scripts ran'</script>", for: nil)
@@ -633,6 +656,13 @@ enum SelfTest {
         } catch {
             return ["ok": false, "error": .string(Sanitize.errorMessage(error))]
         }
+    }
+
+    /// The command bar's text field, wherever the overlay put it.
+    private static func commandBarField(in view: NSView) -> FocusingTextField? {
+        if let field = view as? FocusingTextField { return field }
+        for subview in view.subviews { if let field = commandBarField(in: subview) { return field } }
+        return nil
     }
 
     private static func waitUntil(_ seconds: Double, _ condition: @MainActor () -> Bool) async -> Bool {

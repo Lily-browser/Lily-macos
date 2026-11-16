@@ -6,7 +6,8 @@ is about what Lily itself does with your data when everything works as designed.
 
 **In short:** Lily has no account, no telemetry, no analytics and no crash reporting of its own.
 What it stores stays on your Mac, encrypted. What it sends is what browsing needs: the pages you
-open, plus a few things listed below that you can turn off.
+open, plus a few things listed below that you can turn off (such as search suggestions, which send
+what you type in the command bar to your search engine).
 
 ## What stays on your Mac
 
@@ -47,7 +48,8 @@ private, so they don't appear in Console or crash reports.
 |---|---|---|---|
 | You open a page | the request, with Safari's user agent | that website (and the sites it loads) | the ad and tracker blocker, link tracking protection, HTTPS-First |
 | A tab is open | a request for its site's icon, once per session | that same website | — |
-| You search from the address bar | the search text | your search engine (DuckDuckGo by default; Google, Bing, Kagi, Ecosia in Settings → General) | the search engine choice. Nothing is sent while you type: there are no remote suggestions. |
+| You search from the address bar | the search text | your search engine (DuckDuckGo by default; Google, Bing, Kagi, Ecosia in Settings → General) | the search engine choice |
+| You type in the command bar (search engine suggestions) | what you've typed so far, as you type, with Safari's user agent and your language preferences (Accept-Language), without cookies; as with any request, the engine sees your IP address. Not sent for addresses, emails, file paths or key-like text. A fresh connection for each opening of the bar, redirects refused | your search engine only, never another company; nothing with Kagi (it has no public suggestion service) and nothing from private windows | Settings → Privacy → *Search engine suggestions* (on by default, as in Safari). Off, nothing is sent until you search. Completing addresses as you type uses only your own history, bookmarks and tabs, on your Mac. |
 | Ad blocking with filter lists on | a weekly download of each list | the list's maintainer (EasyList, uBlock, AdGuard, Peter Lowe), who sees your IP address | Settings → Privacy → filter lists (the built-in list needs no download) |
 | You add an extension from the store | the extension's ID, without cookies or stored logins | Google (Chrome Web Store) | only when you ask |
 | Fraudulent-site warnings | parts of hashes of addresses, checked against lists of known fraud sites | Apple, which relays the lookups to its Safe Browsing providers | Settings → Privacy → *Warn about fraudulent websites* (on by default, as in Safari) |
@@ -55,8 +57,9 @@ private, so they don't appear in Console or crash reports.
 | You use the assistant | the page's text and your question | Ollama on your Mac, or the Ollama host you set (HTTPS, optionally pinned) | the assistant's server setting |
 | Links from other apps | nothing extra: they open in Little Lily or a tab | — | — |
 
-**Lily never sends:** usage statistics, analytics, crash reports of its own, or your history,
-bookmarks or typed text to anyone.
+**Lily never sends:** usage statistics, analytics, crash reports of its own, your history or
+bookmarks, or what you type into pages, to anyone. (What you type in the command bar goes to your
+search engine for suggestions only while *Search engine suggestions* is on, as above.)
 
 ## How Lily limits tracking by websites
 
