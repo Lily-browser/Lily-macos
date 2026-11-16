@@ -301,9 +301,20 @@ struct PrivacySettingsView: View {
     @AppStorage(Preferences.Key.historyRetentionDays) private var retention = History.defaultRetentionDays
     @AppStorage(Preferences.Key.clearHistoryOnQuit) private var clearHistoryOnQuit = false
     @AppStorage(Preferences.Key.clearWebsiteDataOnQuit) private var clearDataOnQuit = false
+    @AppStorage(Preferences.Key.searchSuggestions) private var searchSuggestions = true
+    @AppStorage(Preferences.Key.searchEngine) private var searchEngine = Preferences.defaultSearchEngine.rawValue
+
+    private var engine: Preferences.SearchEngine { Preferences.SearchEngine(rawValue: searchEngine) ?? Preferences.defaultSearchEngine }
 
     var body: some View {
         Form {
+            Toggle("Search engine suggestions", isOn: $searchSuggestions)
+            LabeledContent("") {
+                Text(engine == .kagi
+                     ? "Kagi offers no suggestions without signing in, so with Kagi nothing you type is sent until you search; the command bar suggests from your tabs, bookmarks and history only."
+                     : "What you type in the command bar is sent to \(engine.displayName) as you type, without cookies, to suggest searches. Never in private windows.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
             Toggle("Block ads and trackers", isOn: $blockAds)
                 .onChange(of: blockAds) { _, _ in adBlocker.settingsChanged() }
             LabeledContent("Filter lists:") {

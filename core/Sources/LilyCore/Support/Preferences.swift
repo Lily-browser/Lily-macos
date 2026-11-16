@@ -44,6 +44,8 @@ public enum Preferences {
         /// Content-rule list identifiers compiled from the filter lists, and which lists they came from.
         public static let filterListsCompiled = "FilterListsCompiled"
         public static let filterListsCompiledFrom = "FilterListsCompiledFrom"
+        /// Search-engine suggestions while typing in the command bar; on by default (SearchSuggestions).
+        public static let searchSuggestions = "SearchEngineSuggestions"
     }
 
     public enum SearchEngine: String, CaseIterable, Identifiable, Sendable {
@@ -93,6 +95,10 @@ public enum Preferences {
 
     /// Fraudulent-site warnings (WebKit's Safe Browsing, relayed by Apple). On by default.
     public static var warnsAboutFraudulentSites: Bool { flag(Key.fraudulentSiteWarnings, default: true) }
+
+    /// Sends what you type in the command bar to your search engine for suggestions (not in
+    /// private windows, never with Kagi). On by default.
+    public static var searchSuggestionsEnabled: Bool { flag(Key.searchSuggestions, default: true) }
 
     /// Address-bar resolver using the user's search engine.
     public static var urlResolver: URLResolver { URLResolver(searchTemplate: searchEngine.template) }
