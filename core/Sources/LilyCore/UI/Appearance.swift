@@ -32,8 +32,8 @@ enum AppearanceStyle {
         static let commandBarWidth = "AppearanceCommandBarWidth"
     }
 
-    static let defaultAccent = "#5B4CF5"
-    static let presets = ["#5B4CF5", "#0A84FF", "#30B0C7", "#34C759", "#FF9F0A", "#FF375F", "#BF5AF2", "#8E8E93"]
+    static let defaultAccent = "#5E5CE6" // the app icon's indigo (Apple's system indigo)
+    static let presets = ["#5E5CE6", "#0A84FF", "#30B0C7", "#34C759", "#FF9F0A", "#FF375F", "#BF5AF2", "#8E8E93"]
 
     enum Mode: String, CaseIterable {
         case system, light, dark
@@ -94,7 +94,7 @@ enum SidebarTextSize: String, StoredChoice {
 extension Color {
     init(hex: String) {
         let digits = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#")).prefix(6)
-        let value = UInt32(digits, radix: 16) ?? 0x5B4CF5
+        let value = UInt32(digits, radix: 16) ?? 0x5E5CE6
         self.init(red: Double((value >> 16) & 0xFF) / 255, green: Double((value >> 8) & 0xFF) / 255, blue: Double(value & 0xFF) / 255)
     }
 
