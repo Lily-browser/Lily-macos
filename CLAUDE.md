@@ -35,7 +35,7 @@ Before touching extensions, read `docs/EXTENSIONS.md` → *Debugging an extensio
 
 ## Build, test, signing
 - Gates before a PR: `make lint`, `cd core && swift test`, `make selftest`, plus `make perf` when touching `core/tabs/`, memory, or virtualization.
-- User build: `CODESIGN_IDENTITY="<Apple Development identity>" make app` → `build/Lily.app` (team V56242Q2KF). Ad-hoc builds lose Keychain data.
+- User build: `CODESIGN_IDENTITY="<Apple Development identity>" make app` → `build/Lily.app` (team V56242Q2KF; find it with `security find-identity -v -p codesigning`). Ad-hoc builds lose Keychain data.
 - Never run the signed app or its `--self-test` while the user is testing (shared container → freezes). `make selftest` is fine. The signed app's container isn't readable from the terminal, so use `/usr/bin/log`.
 - 1Password desktop unlock and real native-messaging hosts are parked until Developer ID signing exists.
 
