@@ -283,6 +283,24 @@ CONTRIBUTING.md           branches, PRs, stacked PRs, releases
 | `Session/` | `FormDrafts` | Typed-text recovery |
 | `Support/` | `SecureStorage`, `SessionStore`, `History`, `Bookmarks`, `AddressCompletion`, `SearchSuggestions`, `SiteSettings`, `LinkTracking`, `Preferences`, `AppPaths`, `CodeIntegrity`, `CertificatePinning`, `Clipboard`, `Sanitize`, `JSONValue`, `Log` | Encryption and storage, settings, address completion and search suggestions, paths, integrity, pinning, sanitizing, logging |
 
+## Benchmarks
+
+We got here in 87 merged PRs. Numbers from `make perf` on an Apple M3 Pro (18 GB), macOS 27.2.1, November 2026:
+
+| Scenario | Result |
+|---|---|
+| 5,000 unopened tabs | 0.02 s to create, 1,212 bytes per tab, 0 web views |
+| 10,000 tab lookups (5,000 tabs) | 1.1 ms |
+| Sidebar refresh (5,000 tabs) | 1.5 ms |
+| Sidebar snapshot / rows (5,000 tabs + 50 splits) | 2.7 ms / 3.5 ms |
+| Switch tab | 25.5 ms |
+| Command bar search (5,000 tabs) | < 0.1 ms |
+| History search (20,000 visits) | 10.4 ms first, 8.7 ms after |
+| Bookmark search (50,000) | 25.0 ms first, 15.0 ms after |
+| Address completion index (20,000 visits + 5,000 tabs) | 186 ms to build, < 0.1 ms per completion |
+| Record 20 visits (20,000 in history) | 55.7 ms |
+| Session save (5,000 tabs) | 3.5 ms capture, 8.4 ms encode (731 KB), 4.2 ms unchanged check |
+
 ## Development
 
 Requires Xcode 16 or later (Swift 6).
