@@ -35,22 +35,42 @@ func render(pixels: Int) -> Data {
     ctx.saveGState()
     ctx.addPath(shape)
     ctx.clip()
-    let colors = [NSColor(srgbRed: 0.36, green: 0.30, blue: 0.96, alpha: 1).cgColor,
-                  NSColor(srgbRed: 0.93, green: 0.33, blue: 0.62, alpha: 1).cgColor,
-                  NSColor(srgbRed: 1.00, green: 0.62, blue: 0.36, alpha: 1).cgColor] as CFArray
-    let gradient = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: colors, locations: [0, 0.6, 1])!
-    ctx.drawLinearGradient(gradient, start: CGPoint(x: 100, y: 924), end: CGPoint(x: 924, y: 100), options: [])
+    let srgb = CGColorSpace(name: CGColorSpace.sRGB)!
+    // One calm hue, lighter at the top: a soft vertical gradient.
+    let top = NSColor(srgbRed: 0.56, green: 0.60, blue: 1.00, alpha: 1).cgColor
+    let bottom = NSColor(srgbRed: 0.27, green: 0.24, blue: 0.86, alpha: 1).cgColor
+    let gradient = CGGradient(colorsSpace: srgb, colors: [top, bottom] as CFArray, locations: [0, 1])!
+    ctx.drawLinearGradient(gradient, start: CGPoint(x: 512, y: 924), end: CGPoint(x: 512, y: 100), options: [])
+    // Faint glow from above, the way system icons catch light.
+    let glow = CGGradient(colorsSpace: srgb, colors: [NSColor(white: 1, alpha: 0.22).cgColor,
+                                                      NSColor(white: 1, alpha: 0).cgColor] as CFArray, locations: [0, 1])!
+    ctx.drawRadialGradient(glow, startCenter: CGPoint(x: 512, y: 960), startRadius: 0,
+                           endCenter: CGPoint(x: 512, y: 960), endRadius: 620, options: [])
 
-    // The mark: a bold rainbow arc over a short baseline.
-    ctx.setStrokeColor(NSColor.white.cgColor)
-    ctx.setLineCap(.round)
-    ctx.setLineWidth(96)
-    ctx.addArc(center: CGPoint(x: 512, y: 440), radius: 230, startAngle: .pi * 0.08, endAngle: .pi * 0.92, clockwise: false)
-    ctx.strokePath()
-    ctx.setLineWidth(72)
-    ctx.move(to: CGPoint(x: 400, y: 330))
-    ctx.addLine(to: CGPoint(x: 624, y: 330))
-    ctx.strokePath()
+    // The mark: a lily made of three pointed petals fanning out from one point.
+    func petal(angle: CGFloat, length: CGFloat, width: CGFloat) -> CGPath {
+        let path = CGMutablePath()
+        path.move(to: .zero)
+        path.addCurve(to: CGPoint(x: 0, y: length), control1: CGPoint(x: width * 1.25, y: length * 0.28),
+                      control2: CGPoint(x: width * 0.7, y: length * 0.78))
+        path.addCurve(to: .zero, control1: CGPoint(x: -width * 0.7, y: length * 0.78),
+                      control2: CGPoint(x: -width * 1.25, y: length * 0.28))
+        path.closeSubpath()
+        return path.copy(using: [CGAffineTransform(rotationAngle: -angle)])!
+    }
+    ctx.saveGState()
+    ctx.translateBy(x: 512, y: 262)
+    for (angle, length, alpha, width) in [(CGFloat.pi * 0.21, CGFloat(420), CGFloat(0.70), CGFloat(112)),
+                                   (-CGFloat.pi * 0.21, CGFloat(420), CGFloat(0.70), CGFloat(112)),
+                                   (0, CGFloat(500), CGFloat(1), CGFloat(132))] {
+        ctx.saveGState()
+        ctx.setShadow(offset: CGSize(width: 0, height: -8), blur: 22, color: NSColor.black.withAlphaComponent(0.16).cgColor)
+        ctx.addPath(petal(angle: angle, length: length, width: width))
+        ctx.setFillColor(NSColor(white: 1, alpha: alpha).cgColor)
+        ctx.fillPath()
+        ctx.restoreGState()
+    }
+    ctx.restoreGState()
     ctx.restoreGState()
 
     NSGraphicsContext.restoreGraphicsState()

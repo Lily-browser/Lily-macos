@@ -410,7 +410,7 @@ private final class FrozenPaneView: NSView {
 extension NSColor {
     convenience init(hex: String) {
         let digits = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#")).prefix(6)
-        let value = UInt32(digits, radix: 16) ?? 0x5B4CF5
+        let value = UInt32(digits, radix: 16) ?? 0x5E5CE6
         self.init(srgbRed: CGFloat((value >> 16) & 0xFF) / 255, green: CGFloat((value >> 8) & 0xFF) / 255,
                   blue: CGFloat(value & 0xFF) / 255, alpha: 1)
     }
