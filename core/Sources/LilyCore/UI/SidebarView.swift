@@ -283,7 +283,7 @@ private struct TabRow: View {
     let window: WindowModel
     let row: SidebarRowStyle
     @State private var hovering = false
-    @State private var showPreview = false
+    @State private var preview: WindowModel.TabPreview?
     /// Settings → Appearance → Dim sleeping tabs.
     private var dimmed: Bool { tab.isSleeping && row.dimsSleepingTabs }
 
@@ -315,35 +315,41 @@ private struct TabRow: View {
         .onHover { hovering = $0 }
         // One sleep, cancelled when the pointer leaves: no timer runs unless a row is hovered.
         .task(id: hovering) {
-            guard hovering else { showPreview = false; return }
+            guard hovering else { preview = nil; return }
             try? await Task.sleep(for: .seconds(2))
-            if !Task.isCancelled { showPreview = true }
+            if !Task.isCancelled { preview = window.preview(tab.id) }
         }
-        .popover(isPresented: $showPreview, arrowEdge: .trailing) { TabPreviewView(tab: tab, info: window.preview(tab.id)) }
+        // A small floating card over the row's right edge; it never takes clicks.
+        .overlay(alignment: .trailing) {
+            if let preview { TabPreviewView(info: preview).padding(.trailing, 4).allowsHitTesting(false).transition(.opacity) }
+        }
+        .zIndex(preview == nil ? 0 : 1)
         .contextMenu { TabContextMenu(tab: tab, window: window) }
     }
 }
 
 /// Hover preview: the tab's state and the memory its web process really uses.
 private struct TabPreviewView: View {
-    let tab: WindowModel.TabItem
     let info: WindowModel.TabPreview
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(tab.title).font(.headline).lineLimit(2)
-            if let host = tab.url?.host { Text(host).font(.caption).foregroundStyle(.secondary) }
-            Divider()
-            Label(info.isActive ? "Active" : info.isSleeping ? "Inactive · sleeping" : "Inactive", systemImage: info.isActive ? "bolt.fill" : "moon.zzz")
-                .font(.callout)
-            Label(memoryText, systemImage: "memorychip").font(.callout).monospacedDigit()
+        HStack(spacing: 6) {
+            Image(systemName: info.isActive ? "bolt.fill" : "moon.zzz").foregroundStyle(info.isActive ? Color.accentColor : .secondary)
+            Text(info.isActive ? "Active" : "Inactive")
+            Text("·").foregroundStyle(.tertiary)
+            Text(memoryText).monospacedDigit()
         }
-        .padding(12).frame(width: 240, alignment: .leading)
+        .font(.system(size: 11, weight: .medium))
+        .fixedSize()
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 7))
+        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(.separator))
+        .shadow(color: .black.opacity(0.2), radius: 6, y: 2)
     }
 
     private var memoryText: String {
         if let bytes = info.memory { return TabMemory.format(bytes) }
-        return info.isSleeping ? "0 MB (no process)" : "Memory unavailable"
+        return info.isSleeping ? "0 MB" : "n/a"
     }
 }
 
