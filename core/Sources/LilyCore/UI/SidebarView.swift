@@ -283,6 +283,7 @@ private struct TabRow: View {
     let window: WindowModel
     let row: SidebarRowStyle
     @State private var hovering = false
+    @State private var showPreview = false
     /// Settings → Appearance → Dim sleeping tabs.
     private var dimmed: Bool { tab.isSleeping && row.dimsSleepingTabs }
 
@@ -312,7 +313,37 @@ private struct TabRow: View {
         .contentShape(Rectangle())
         .onTapGesture { window.activate(tab.id) }
         .onHover { hovering = $0 }
+        // One sleep, cancelled when the pointer leaves: no timer runs unless a row is hovered.
+        .task(id: hovering) {
+            guard hovering else { showPreview = false; return }
+            try? await Task.sleep(for: .seconds(2))
+            if !Task.isCancelled { showPreview = true }
+        }
+        .popover(isPresented: $showPreview, arrowEdge: .trailing) { TabPreviewView(tab: tab, info: window.preview(tab.id)) }
         .contextMenu { TabContextMenu(tab: tab, window: window) }
+    }
+}
+
+/// Hover preview: the tab's state and the memory its web process really uses.
+private struct TabPreviewView: View {
+    let tab: WindowModel.TabItem
+    let info: WindowModel.TabPreview
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(tab.title).font(.headline).lineLimit(2)
+            if let host = tab.url?.host { Text(host).font(.caption).foregroundStyle(.secondary) }
+            Divider()
+            Label(info.isActive ? "Active" : info.isSleeping ? "Inactive · sleeping" : "Inactive", systemImage: info.isActive ? "bolt.fill" : "moon.zzz")
+                .font(.callout)
+            Label(memoryText, systemImage: "memorychip").font(.callout).monospacedDigit()
+        }
+        .padding(12).frame(width: 240, alignment: .leading)
+    }
+
+    private var memoryText: String {
+        if let bytes = info.memory { return TabMemory.format(bytes) }
+        return info.isSleeping ? "0 MB (no process)" : "Memory unavailable"
     }
 }
 

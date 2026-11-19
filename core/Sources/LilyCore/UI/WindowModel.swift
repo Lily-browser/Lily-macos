@@ -160,6 +160,13 @@ public final class WindowModel {
     // MARK: Tab actions (forwarded to the controller)
 
     func activate(_ id: UUID) { controller?.tabs.activate(id) }
+
+    /// What the hover preview shows: read on demand, so a sleeping tab stays asleep.
+    struct TabPreview { let isActive: Bool; let isSleeping: Bool; let memory: UInt64? }
+    func preview(_ id: UUID) -> TabPreview {
+        let tab = controller?.tabs.tab(id)
+        return TabPreview(isActive: id == activeID, isSleeping: tab?.isSleeping ?? true, memory: tab?.memoryFootprint)
+    }
     func close(_ id: UUID) {
         controller?.tabs.close(id)
         Haptics.tap()

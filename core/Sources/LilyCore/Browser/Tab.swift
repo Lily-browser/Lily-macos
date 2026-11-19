@@ -38,6 +38,8 @@ public final class Tab: NSObject {
         return created
     }
     public var hasWebView: Bool { loadedWebView != nil }
+    /// Footprint of the web content process in bytes; nil when asleep or unreadable. Never makes a web view.
+    var memoryFootprint: UInt64? { loadedWebView.flatMap { TabMemory.footprint(of: $0) } }
     private var loadedWebView: WKWebView?
     /// The extension whose pages the web view was made for, nil for a regular web view.
     private var webViewExtension: String?
