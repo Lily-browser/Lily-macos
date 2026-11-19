@@ -358,6 +358,14 @@ What's not finished, what's deliberately unsupported, and what still needs a per
 - **Writing Tools** stays in the Edit menu: macOS adds it, with no supported way to leave it out.
 - **1Password desktop-app unlock** waits on an Apple Developer Program membership. 1Password's *Add browser* refuses Lily ("signed in an unsupported way or may be missing a required identifier") because builds are ad-hoc signed, with no team ID. With Developer ID signing, the next step is a native messaging host for 1Password's helper behind a setting that's off by default, and finding out whether the helper works when started from Lily's sandbox. Until then native messaging stays refused (below).
 
+**Planned: sync between Macs (investigation only, nothing built; see [#102](https://github.com/pwngoblin/Lily/issues/102))**
+Today nothing syncs: every store is a per-device sealed file and the key is `ThisDeviceOnly`. iCloud (CloudKit) needs a paid Apple Developer Program membership and a provisioned build, which the self-signed release identity can't provide, and it would change the "nothing leaves your Mac" promise. Action plan, each step gated on the owner's go-ahead:
+1. **Decide** whether to sync at all and which data (proposal: bookmarks, spaces, pinned tabs; never extensions, permissions, form drafts, cookies or private-window data). Off by default.
+2. **Data-model prep** (no network): stable IDs, `modifiedAt`, tombstones and schema versions for the synced stores; define what Clear Browsing Data deletes on every device.
+3. **Encrypted export/import** of those stores (passphrase key, one file). Needs no Apple account and works with the current signing.
+4. **Optional:** sync through an iCloud Drive folder the user picks (`files.user-selected.read-write`, no paid account), same encrypted format.
+5. **After the Developer Program is bought** (also unlocks Developer ID notarization and the 1Password unlock): CloudKit via `CKSyncEngine` behind a `SyncTransport` protocol, end-to-end encrypted fields, strict schema and URL validation of inbound records, entitlement and `verify-app.sh` allowlist review, `sec-auditor` pass, then PRIVACY.md, SECURITY.md and CLAUDE.md updates.
+
 **Limitations by design**
 - **No native messaging.** `connectNative` / `sendNativeMessage` fail immediately, so password managers can't unlock through their desktop app; they work with their own sign-in. Desktop helpers check the calling browser against a signed list Lily isn't on, and launching other apps' binaries from the sandbox would widen the attack surface. `CLAUDE.md` describes a host manager that spawns binaries; it's intentionally a refusal. See [docs/EXTENSIONS.md](docs/EXTENSIONS.md).
 - **Chrome APIs WebKit lacks are stand-ins.** `privacy`, `management`, `idle`, `downloads` and some events exist so Chrome-built extensions start, but nothing is changed or downloaded through them.
