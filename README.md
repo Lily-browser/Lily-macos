@@ -358,6 +358,13 @@ What's not finished, what's deliberately unsupported, and what still needs a per
 - **Writing Tools** stays in the Edit menu: macOS adds it, with no supported way to leave it out.
 - **1Password desktop-app unlock** waits on an Apple Developer Program membership. 1Password's *Add browser* refuses Lily ("signed in an unsupported way or may be missing a required identifier") because builds are ad-hoc signed, with no team ID. With Developer ID signing, the next step is a native messaging host for 1Password's helper behind a setting that's off by default, and finding out whether the helper works when started from Lily's sandbox. Until then native messaging stays refused (below).
 
+**Planned: what the Apple Developer Program unlocks (not bought yet)**
+Hardened runtime is already on (`--options runtime,library,restrict`, enforced by `verify-app.sh`, no exceptions) and needs no membership. The paid account adds, in this order:
+1. **Developer ID signing + notarization** (CI secrets listed under [Releases](#releases)): no "Open Anyway" on first launch; notarization needs hardened runtime with no unjustified exceptions, which Lily already satisfies.
+2. **A team ID and a stable, Apple-anchored signature identity**: keeps the data key across updates without a self-made cert, and lets 1Password's *Add browser* accept Lily (native-messaging host work follows).
+3. **Provisioned entitlements**: the data-protection Keychain and, only if sync is approved, iCloud (see below).
+Until then releases use the self-signed "Lily Release Signing" identity.
+
 **Planned: sync between Macs (investigation only, nothing built; see [#102](https://github.com/pwngoblin/Lily/issues/102))**
 Today nothing syncs: every store is a per-device sealed file and the key is `ThisDeviceOnly`. iCloud (CloudKit) needs a paid Apple Developer Program membership and a provisioned build, which the self-signed release identity can't provide, and it would change the "nothing leaves your Mac" promise. Action plan, each step gated on the owner's go-ahead:
 1. **Decide** whether to sync at all and which data (proposal: bookmarks, spaces, pinned tabs; never extensions, permissions, form drafts, cookies or private-window data). Off by default.
