@@ -173,7 +173,7 @@ jobs:
       - name: Summary
         run: |
           signed="ad-hoc (unsigned)"
-          [ -n "$HAS_SIGNING" ] && signed="Developer ID"
+          [ -n "$HAS_SIGNING" ] && signed="self-signed (stable identity, not notarized)"
           [ -n "$HAS_NOTARY" ] && signed="Developer ID, notarized"
           {
             echo "### 📦 $DMG_NAME"
