@@ -18,6 +18,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
     private(set) var extensionLibrary: ExtensionLibrary?
     private(set) var extensionRuntime: AnyObject?
     private var memoryPressure: DispatchSourceMemoryPressure?
+    private let appIcon = AppIconController()
     private var historyWindow: HistoryWindowController?
     private let historyMenuDelegate = HistoryMenuDelegate()
     private(set) var bookmarks: Bookmarks!
@@ -52,6 +53,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         NSApp.mainMenu = MainMenu.build()
         MainMenu.updateDevelopMenu()
         AppearanceStyle.applyAppAppearance()
+        appIcon.start()
         watchMemoryPressure()
         Task { await launch() }
     }

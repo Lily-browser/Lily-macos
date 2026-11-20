@@ -215,7 +215,7 @@ enum Customization {
         AppearanceStyle.Key.footerAssistant, AppearanceStyle.Key.footerHistory, AppearanceStyle.Key.footerDownloads,
         AppearanceStyle.Key.footerNewTab, AppearanceStyle.Key.pageCornerRadius, AppearanceStyle.Key.pagePadding,
         AppearanceStyle.Key.commandBarBlur, AppearanceStyle.Key.commandBarPosition, AppearanceStyle.Key.commandBarWidth,
-        AppearanceStyle.Key.pinnedColumns,
+        AppearanceStyle.Key.pinnedColumns, AppIconController.Key.variant, AppIconController.Key.matchesDarkMode,
     ]
 
     static let behaviourKeys: [String] = [
