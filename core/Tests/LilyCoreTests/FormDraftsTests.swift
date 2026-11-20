@@ -28,6 +28,18 @@ import Testing
         #expect(drafts.drafts.isEmpty)
     }
 
+    @Test func oneSiteCannotEvictOthersDrafts() {
+        let drafts = FormDrafts(directory: nil)
+        let victim = URL(string: "https://bank.example/compose")!
+        drafts.save(page: victim, field: "body", text: "a long draft with several words in it")
+        for i in 0..<(FormDrafts.maxDrafts + 50) {
+            drafts.save(page: URL(string: "https://evil.example/p\(i)")!, field: "f\(i)", text: "attacker text with several words \(i)")
+        }
+        #expect(drafts.drafts(for: victim).count == 1)
+        #expect(drafts.drafts(for: URL(string: "https://evil.example/p\(FormDrafts.maxDrafts + 49)")!).count == 1)
+        #expect(drafts.drafts(for: URL(string: "https://evil.example/p0")!).isEmpty)
+    }
+
     @Test func credentialsAreNotKeptAsDrafts() {
         let drafts = FormDrafts(directory: nil)
         drafts.save(page: page, field: "textarea#body", text: reply)
@@ -61,10 +73,10 @@ import Testing
         #expect(drafts.drafts(for: page).isEmpty)
 
         for n in 0..<(FormDrafts.maxDrafts + 10) {
-            drafts.save(page: URL(string: "https://site.example/\(n)")!, field: "a", text: reply)
+            drafts.save(page: URL(string: "https://site\(n).example/")!, field: "a", text: reply)
         }
         #expect(drafts.drafts.count == FormDrafts.maxDrafts)
-        #expect(drafts.drafts.first?.page == "https://site.example/\(FormDrafts.maxDrafts + 9)") // most recent kept
+        #expect(drafts.drafts.first?.page == "https://site\(FormDrafts.maxDrafts + 9).example/") // most recent kept
 
         drafts.save(page: page, field: "a", text: String(repeating: "word ", count: FormDrafts.maxCharacters / 5 + 100))
         #expect(drafts.drafts(for: page).first?.text.count == FormDrafts.maxCharacters)

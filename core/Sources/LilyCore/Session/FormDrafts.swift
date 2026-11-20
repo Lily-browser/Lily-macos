@@ -23,6 +23,8 @@ public final class FormDrafts {
     nonisolated static let maxCharacters = 40_000
     nonisolated static let maxFieldKey = 200
     nonisolated static let maxDrafts = 200
+    /// One site can hold this many, so it can't push other sites' drafts out of the shared cap.
+    nonisolated static let maxDraftsPerOrigin = 20
 
     /// Most recent first.
     public private(set) var drafts: [Draft] = []
@@ -45,6 +47,13 @@ public final class FormDrafts {
         return "\(scheme)://\(host)\(port)\(path)"
     }
 
+    /// "scheme://host:port" of a page key.
+    nonisolated static func origin(of pageKey: String) -> Substring {
+        let afterScheme = pageKey.range(of: "://").map { pageKey[$0.upperBound...] } ?? Substring(pageKey)
+        let hostEnd = afterScheme.firstIndex(of: "/") ?? afterScheme.endIndex
+        return pageKey[pageKey.startIndex..<hostEnd]
+    }
+
     public func load() async {
         guard let file else { return }
         do {
@@ -64,6 +73,13 @@ public final class FormDrafts {
         drafts.removeAll { $0.page == page && $0.field == field }
         if text.trimmingCharacters(in: .whitespacesAndNewlines).count >= Self.minCharacters, !Self.looksSecret(text) {
             drafts.insert(Draft(page: page, field: field, text: text, savedAt: now()), at: 0)
+            let origin = Self.origin(of: page)
+            var seen = 0
+            drafts.removeAll { draft in
+                guard Self.origin(of: draft.page) == origin else { return false }
+                seen += 1
+                return seen > Self.maxDraftsPerOrigin
+            }
             if drafts.count > Self.maxDrafts { drafts.removeLast(drafts.count - Self.maxDrafts) }
         }
         scheduleSave()
