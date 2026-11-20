@@ -294,7 +294,10 @@ extension BrowserWindowController: NSMenuItemValidation, NSToolbarItemValidation
 
     /// Develop → Show Web Inspector (⌥⌘I), for the active tab.
     @objc public func showWebInspector(_ sender: Any?) {
-        if let web = tabs.active?.webView { WebInspector.show(for: web) }
+        if let web = tabs.active?.webView {
+            WebInspector.show(for: web)
+            InspectorWindow.keepDetached(for: web)
+        }
     }
 
     /// Web developer features switched: every open page follows.

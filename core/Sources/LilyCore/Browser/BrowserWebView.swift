@@ -50,6 +50,7 @@ final class BrowserWebView: WKWebView {
         defer { ContextMenuPrefs.apply(hidden: ContextMenuPrefs.currentlyHidden(), to: menu) }
         Self.dropOpenLink(from: menu)
         Self.restyle(menu)
+        Self.routeInspectElement(in: menu, through: self)
         if let newTab = menu.items.first(where: { $0.identifier?.rawValue == "WKMenuItemIdentifierOpenLinkInNewWindow" }),
            let index = menu.items.firstIndex(of: newTab) {
             let split = NSMenuItem(title: "Open Link in Split View", action: #selector(openLinkInSplit(_:)), keyEquivalent: "")
@@ -74,6 +75,24 @@ final class BrowserWebView: WKWebView {
     static func dropOpenLink(from menu: NSMenu) {
         for item in menu.items where item.identifier?.rawValue == "WKMenuItemIdentifierOpenLink" { menu.removeItem(item) }
         while menu.items.first?.isSeparatorItem == true { menu.removeItem(at: 0) }
+    }
+
+    /// WebKit's own Inspect Element item opens the inspector docked. Run it as usual, then move the
+    /// inspector into its own window (see `InspectorWindow`).
+    static func routeInspectElement(in menu: NSMenu, through view: BrowserWebView) {
+        guard let item = menu.items.first(where: { $0.identifier?.rawValue == "WKMenuItemIdentifierInspectElement" }),
+              let action = item.action, item.target !== view else { return }
+        item.representedObject = OriginalAction(target: item.target, action: action)
+        item.target = view
+        item.action = #selector(inspectElement(_:))
+    }
+
+    private struct OriginalAction { let target: AnyObject?; let action: Selector }
+
+    @objc private func inspectElement(_ sender: NSMenuItem) {
+        guard let original = sender.representedObject as? OriginalAction else { return }
+        NSApp.sendAction(original.action, to: original.target, from: sender)
+        InspectorWindow.keepDetached(for: self)
     }
 
     static func restyle(_ menu: NSMenu) {
