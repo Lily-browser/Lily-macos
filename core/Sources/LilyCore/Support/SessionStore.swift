@@ -110,7 +110,7 @@ public actor SessionStore {
         } catch {
             // Unreadable (tampered, or the key was removed): start fresh rather than fail launch. The old
             // plaintext file is not a fallback: it has no authentication, so it would bypass the seal.
-            Log.app.error("Session could not be decrypted; discarding it: \(String(describing: error), privacy: .public)")
+            Log.app.error("Session could not be decrypted; discarding it: \(String(describing: error), privacy: .sensitive)")
             file.deleteCorrupt()
             try? FileManager.default.removeItem(at: legacyURL)
             return nil
@@ -129,7 +129,7 @@ public actor SessionStore {
             try await file.write(JSONEncoder().encode(session), ticket: ticket)
             if clears == generation { saved = session }
         } catch {
-            Log.app.error("Session save failed: \(String(describing: error), privacy: .public)")
+            Log.app.error("Session save failed: \(String(describing: error), privacy: .sensitive)")
         }
     }
 
