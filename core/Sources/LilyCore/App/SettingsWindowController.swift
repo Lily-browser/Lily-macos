@@ -11,6 +11,7 @@ final class SettingsWindowController: NSWindowController {
         tabs.addTabViewItem(Self.pane("General", symbol: "gearshape", GeneralSettingsView()))
         tabs.addTabViewItem(Self.pane("Tabs", symbol: "square.on.square", TabsSettingsView()))
         tabs.addTabViewItem(Self.pane("Appearance", symbol: "paintpalette", AppearanceSettingsView()))
+        tabs.addTabViewItem(Self.pane("Context Menu", symbol: "contextualmenu.and.cursorarrow", ContextMenuSettingsView()))
         tabs.addTabViewItem(Self.pane("Websites", symbol: "globe", WebsitesSettingsView(settings: siteSettings)))
         tabs.addTabViewItem(Self.pane("Privacy", symbol: "hand.raised", PrivacySettingsView(adBlocker: adBlocker, clearBrowsingData: clearBrowsingData)))
         if let extensionLibrary {

@@ -46,6 +46,8 @@ final class BrowserWebView: WKWebView {
 
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         super.willOpenMenu(menu, with: event)
+        // Last of all, so the items Lily adds below can be hidden too (also on the early return).
+        defer { ContextMenuPrefs.apply(hidden: ContextMenuPrefs.currentlyHidden(), to: menu) }
         Self.dropOpenLink(from: menu)
         Self.restyle(menu)
         if let newTab = menu.items.first(where: { $0.identifier?.rawValue == "WKMenuItemIdentifierOpenLinkInNewWindow" }),
@@ -53,6 +55,7 @@ final class BrowserWebView: WKWebView {
             let split = NSMenuItem(title: "Open Link in Split View", action: #selector(openLinkInSplit(_:)), keyEquivalent: "")
             split.image = NSImage(systemSymbolName: "rectangle.split.2x1", accessibilityDescription: nil)
             split.target = self
+            split.identifier = NSUserInterfaceItemIdentifier(ContextMenuPrefs.splitViewID)
             split.representedObject = newTab
             menu.insertItem(split, at: index + 1)
             // Little Lily windows use the regular profile, so private windows don't offer them.
@@ -60,6 +63,7 @@ final class BrowserWebView: WKWebView {
             let little = NSMenuItem(title: "Open Link in Little Lily", action: #selector(openLinkInLittle(_:)), keyEquivalent: "")
             little.image = NSImage(systemSymbolName: "macwindow", accessibilityDescription: nil)
             little.target = self
+            little.identifier = NSUserInterfaceItemIdentifier(ContextMenuPrefs.littleLilyID)
             little.representedObject = newTab
             menu.insertItem(little, at: index + 2)
         }
