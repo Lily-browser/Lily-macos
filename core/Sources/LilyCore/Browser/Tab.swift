@@ -69,6 +69,7 @@ public final class Tab: NSObject {
     private var securityScopedURL: URL?
     /// The original http:// URL while its HTTPS-First upgrade is loading.
     private var upgradedFrom: URL?
+    private var isProvisional = false
     private var downloadsThisPage = 0
     private var moreDownloadsAllowed = false
     private var dialogCount = 0
@@ -370,11 +371,7 @@ public final class Tab: NSObject {
             watch(\.url) { tab in
                 guard !tab.isSleeping else { return }
                 tab.scheduleRecheck()
-                // An internal page keeps showing the address that failed.
-                if let u = tab.webView.url, !ErrorPage.isInternal(u) {
-                    if tab.url?.host != u.host { tab.faviconURL = nil }
-                    tab.url = u
-                }
+                tab.syncURLFromWebView()
                 tab.notify()
             },
             watch(\.isLoading) { tab in guard !tab.isSleeping else { return }; tab.isLoading = tab.webView.isLoading; tab.notify() },
@@ -397,6 +394,15 @@ public final class Tab: NSObject {
     private func notify() {
         guard !isDiscarded else { return }
         delegate?.tabDidChange(self)
+    }
+
+    /// The address the pill shows is the committed page's. While a navigation is still provisional the
+    /// web view already reports the pending address, but the old page (and its lock) is still what's
+    /// on screen, so the two must not be mixed. An internal page keeps showing the address that failed.
+    private func syncURLFromWebView() {
+        guard !isProvisional, let u = webView.url, !ErrorPage.isInternal(u) else { return }
+        if url?.host != u.host { faviconURL = nil }
+        url = u
     }
 
     /// True when `failed` is the https twin (same host and port) of the http URL that was upgraded.
@@ -620,17 +626,20 @@ extension Tab: WKNavigationDelegate {
     }
 
     public func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        isProvisional = false
         DownloadManager.shared.track(download, privately: !factory.dataStore.isPersistent)
         delegate?.tabDidStartDownload(self)
     }
 
     public func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        isProvisional = false
         DownloadManager.shared.track(download, privately: !factory.dataStore.isPersistent)
         delegate?.tabDidStartDownload(self)
     }
 
     public func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         pendingURL = webView.url
+        isProvisional = true
         youtubeVideoID = nil
     }
 
@@ -639,6 +648,9 @@ extension Tab: WKNavigationDelegate {
         // must not inherit it as assistant context. The new document reports its own.
         lastSelection = nil
         upgradedFrom = nil
+        isProvisional = false
+        syncURLFromWebView()
+        notify()
         showsErrorPage = committingInternalPage
         committingInternalPage = false
         downloadsThisPage = 0
@@ -650,10 +662,13 @@ extension Tab: WKNavigationDelegate {
 
     public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         applyForcedDark()
+        isProvisional = false
+        syncURLFromWebView()
         notify()
     }
 
     public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        isProvisional = false
         showError(error, for: pendingURL)
     }
 
