@@ -75,4 +75,12 @@ import Testing
         let entry = try #require(manifest.scripts.first { $0.id == "dark-mode" })
         #expect(entry.mainFrameOnly && entry.matches == ["*"])
     }
+
+    @Test func siteDataRecordsMatchSubdomainsAndParents() {
+        #expect(SiteSecurityView.recordMatches("example.com", host: "example.com"))
+        #expect(SiteSecurityView.recordMatches("example.com", host: "app.example.com"))
+        #expect(SiteSecurityView.recordMatches("cdn.example.com", host: "example.com"))
+        #expect(!SiteSecurityView.recordMatches("notexample.com", host: "example.com"))
+        #expect(!SiteSecurityView.recordMatches("example.org", host: "app.example.com"))
+    }
 }

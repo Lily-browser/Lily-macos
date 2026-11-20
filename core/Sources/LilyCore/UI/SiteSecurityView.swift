@@ -59,6 +59,9 @@ struct SiteSecurityView: View {
     let security: SiteSecurity
     let window: WindowModel
     @State private var storedRecords: Int?
+    /// The store of the tab the popover was opened for, fixed on first use so a tab switch can't aim
+    /// "Clear Site Data" at another Space's store.
+    @State private var pinnedStore: WKWebsiteDataStore?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -90,7 +93,10 @@ struct SiteSecurityView: View {
         }
         .padding(16)
         .frame(width: 330)
-        .task { storedRecords = await countRecords() }
+        .task {
+            pinnedStore = store
+            storedRecords = await countRecords()
+        }
     }
 
     private var header: some View {
@@ -157,13 +163,20 @@ struct SiteSecurityView: View {
 
     /// The active tab's store: a space with Separate logins keeps this site's data apart.
     private var store: WKWebsiteDataStore? {
-        window.controller.map { $0.factory.dataStore(forSpace: $0.tabs.active?.spaceID) }
+        pinnedStore ?? window.controller.map { $0.factory.dataStore(forSpace: $0.tabs.active?.spaceID) }
+    }
+
+    /// WebKit names cookie and storage records by site (often the registrable domain), so a record
+    /// "example.com" belongs to "app.example.com" too.
+    nonisolated static func recordMatches(_ recordName: String, host key: String) -> Bool {
+        let name = recordName.lowercased()
+        return name == key || name.hasSuffix(".\(key)") || key.hasSuffix(".\(name)")
     }
 
     private func matchingRecords() async -> [WKWebsiteDataRecord] {
         guard let store, let key = SiteSettings.key(for: security.url) else { return [] }
         let records = await store.dataRecords(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes())
-        return records.filter { $0.displayName == key || $0.displayName.hasSuffix(".\(key)") }
+        return records.filter { Self.recordMatches($0.displayName, host: key) }
     }
 
     private func countRecords() async -> Int { await matchingRecords().count }
