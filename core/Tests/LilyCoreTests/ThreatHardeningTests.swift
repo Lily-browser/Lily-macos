@@ -312,6 +312,8 @@ actor GatedKeyStore: KeyStore {
         #expect(!Tab.isUpgrade(URL(string: "http://example.com/a")!, of: original))
         #expect(!Tab.isUpgrade(nil, of: original))
         #expect(Tab.isUpgrade(URL(string: "https://example.com:8080/")!, of: URL(string: "http://example.com:8080/")!))
+    }
+}
 
 private struct FailingKeyStore: KeyStore {
     func key(named name: String) async throws -> SymmetricKey { throw KeychainError(status: errSecInteractionNotAllowed, operation: "read") }
