@@ -1,4 +1,5 @@
 import Foundation
+import WebKit
 import SwiftUI
 import Testing
 @testable import LilyCore
@@ -74,5 +75,14 @@ import Testing
         let manifest = try InjectionManifest.load(from: root.appendingPathComponent("injections/manifest.json"))
         let entry = try #require(manifest.scripts.first { $0.id == "dark-mode" })
         #expect(entry.mainFrameOnly && entry.matches == ["*"])
+    }
+}
+
+@Suite @MainActor struct SiteSecurityErrorPageTests {
+    @Test func anErrorPageAtAnHTTPSAddressIsNotReportedSecure() {
+        let web = WKWebView(frame: .zero)
+        let url = URL(string: "https://example.com/")!
+        #expect(SiteSecurity(webView: web, url: url, isErrorPage: true).level == .notLoaded)
+        #expect(SiteSecurity(webView: web, url: url).level != .notLoaded)
     }
 }
