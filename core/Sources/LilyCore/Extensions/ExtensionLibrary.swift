@@ -45,6 +45,8 @@ final class ExtensionLibrary {
     private(set) var storeStatus: String?
     /// The runtime listens here to load and unload extensions.
     @ObservationIgnored var onReadyChange: (@MainActor () -> Void)?
+    /// An extension was removed (not updated): WebKit's own stored data for it should go too.
+    @ObservationIgnored var onRemoved: (@MainActor (String) -> Void)?
     @ObservationIgnored let storage: ExtensionStorage
     /// The list decides what code runs in pages, so it's sealed (encrypted and authenticated with the
     /// Keychain key) rather than kept in UserDefaults, where another process could add an "extension".
@@ -205,6 +207,7 @@ final class ExtensionLibrary {
         save()
         Task { await storage.clear(id) }
         onReadyChange?()
+        onRemoved?(id)
     }
 
     /// Tests: treat an already-verified entry as ready, without the install flow.
