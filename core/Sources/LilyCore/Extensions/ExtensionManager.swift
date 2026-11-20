@@ -31,6 +31,7 @@ final class ExtensionManager: NSObject, WKWebExtensionControllerDelegate {
         super.init()
         controller.delegate = self
         library.onReadyChange = { [weak self] in self?.sync() }
+        library.onRemoved = { [weak self] id in self?.removeWebKitData(for: id) }
         notifications.isApproved = { [weak self] id in
             self?.library.installed.first { $0.id == id }?.grantedPermissions.contains("notifications") == true
         }
@@ -71,6 +72,17 @@ final class ExtensionManager: NSObject, WKWebExtensionControllerDelegate {
             for window in windows() { window.registerWithExtensions(controller) }
         } catch {
             Log.extensions.error("Loading an extension failed: \(error.localizedDescription, privacy: .private)")
+        }
+    }
+
+    /// Removing an extension also removes what WebKit stored for it (local, session and synced storage),
+    /// so a later extension with the same identifier doesn't inherit it. Updates keep it on purpose.
+    private func removeWebKitData(for id: String) {
+        Task { [controller] in
+            let types = WKWebExtensionController.allExtensionDataTypes
+            let records = await controller.dataRecords(ofTypes: types).filter { $0.uniqueIdentifier == id }
+            guard !records.isEmpty else { return }
+            await controller.removeData(ofTypes: types, from: records)
         }
     }
 
