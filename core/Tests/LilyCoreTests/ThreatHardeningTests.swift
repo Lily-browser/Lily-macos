@@ -184,6 +184,22 @@ private func temporaryDirectory() throws -> URL {
         let good = Data(repeating: 7, count: 32).base64EncodedString()
         #expect(AssistantConfiguration.parsePins("\(good), not-base64, \(Data(count: 16).base64EncodedString())") == [good])
     }
+
+    @Test func pinsAcceptPrefixAndUnpaddedFormsAndBadTokensFailClosed() {
+        let raw = Data(repeating: 9, count: 32)
+        let padded = raw.base64EncodedString()
+        let unpadded = padded.replacingOccurrences(of: "=", with: "")
+        #expect(AssistantConfiguration.parsePins("sha256/\(padded)") == [padded])
+        #expect(AssistantConfiguration.parsePins(unpadded) == [padded])
+        var config = AssistantConfiguration(host: "https://ollama.example", defaultModel: nil)
+        config.hasInvalidPins = true
+        #expect(config.transportError != nil)
+    }
+
+    @Test func loopbackMeansLiteralLoopbackOnly() {
+        for ok in ["localhost", "::1", "[::1]", "127.0.0.1", "127.255.0.3"] { #expect(HTTPSFirst.isLoopback(ok), "\(ok)") }
+        for bad in ["127.evil.example", "127.0.0.1.nip.io", "127.1", "127.0.0.256", "127.0.0.", "1270.0.0.1"] { #expect(!HTTPSFirst.isLoopback(bad), "\(bad)") }
+    }
 }
 
 @Suite @MainActor struct ClipboardTests {

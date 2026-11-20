@@ -14,6 +14,8 @@ public struct AssistantConfiguration: Sendable, Equatable {
     public var keepAlive = "5m"
     /// SPKI SHA-256 pins (base64) the Ollama server must present; empty means system trust only.
     public var pinnedKeys: Set<String> = []
+    /// True when the pins field has text that is not a valid SHA-256 pin; the transport then refuses to connect.
+    public var hasInvalidPins = false
 
     public init(host: String? = nil, defaultModel: String? = nil) {
         self.baseURL = Self.normalizedHost(host)
@@ -31,7 +33,9 @@ public struct AssistantConfiguration: Sendable, Equatable {
             if model?.isEmpty ?? true { model = environment["ARC_AGENT_MODEL"] }
         }
         var configuration = Self(host: host, defaultModel: model)
-        configuration.pinnedKeys = parsePins(defaults.string(forKey: Preferences.Key.ollamaPins))
+        let rawPins = defaults.string(forKey: Preferences.Key.ollamaPins)
+        configuration.pinnedKeys = parsePins(rawPins)
+        configuration.hasInvalidPins = pinTokens(rawPins).count != configuration.pinnedKeys.count
         return configuration
     }
 
@@ -53,13 +57,24 @@ public struct AssistantConfiguration: Sendable, Equatable {
         return parts.url ?? fallback
     }
 
+    private static func pinTokens(_ raw: String?) -> Set<String> {
+        Set((raw ?? "").split(whereSeparator: { $0 == "," || $0.isWhitespace }).map(String.init))
+    }
+
+    /// Accepts `sha256/<base64>` and `<base64>` (padded or not); returns the canonical padded base64.
     public static func parsePins(_ raw: String?) -> Set<String> {
-        Set((raw ?? "").split(whereSeparator: { $0 == "," || $0.isWhitespace }).map(String.init)
-            .filter { Data(base64Encoded: $0)?.count == 32 })
+        Set(pinTokens(raw).compactMap { token -> String? in
+            var body = token
+            if body.lowercased().hasPrefix("sha256/") { body = String(body.dropFirst(7)) }
+            while body.count % 4 != 0 { body += "=" }
+            guard let data = Data(base64Encoded: body), data.count == 32 else { return nil }
+            return data.base64EncodedString()
+        })
     }
 
     /// Page content is sent to Ollama, so plain HTTP is only allowed to this Mac (loopback).
     public var transportError: IPCError? {
+        if hasInvalidPins { return .ollamaUnavailable("The certificate pins in Settings are not valid SHA-256 pins. Fix or clear them.") }
         guard baseURL.scheme == "http", let host = baseURL.host, !HTTPSFirst.isLoopback(host) else { return nil }
         return .ollamaUnavailable("Ollama at \(host) must use HTTPS: page content would cross the network unencrypted.")
     }
