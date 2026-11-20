@@ -22,6 +22,20 @@ import Testing
         #expect(menu.items[3].image == nil && menu.items[3].title == "Unknown") // unknown items untouched
     }
 
+    @Test func openLinkInNewTabComesFirst() {
+        let menu = NSMenu()
+        menu.addItem(item("WKMenuItemIdentifierOpenLink", "Open Link"))
+        menu.addItem(item("WKMenuItemIdentifierOpenLinkInNewWindow", "Open Link in New Window"))
+        menu.addItem(item("WKMenuItemIdentifierCopyLink", "Copy Link"))
+        BrowserWebView.dropOpenLink(from: menu)
+        BrowserWebView.restyle(menu)
+        #expect(menu.items.map(\.title) == ["Open Link in New Tab", "Copy Link"])
+        let image = NSMenu()
+        image.addItem(item("WKMenuItemIdentifierCopyImage", "Copy Image"))
+        BrowserWebView.dropOpenLink(from: image)
+        #expect(image.items.count == 1) // menus without a link are untouched
+    }
+
     @Test func everySymbolExists() {
         for (id, style) in BrowserWebView.restyle {
             #expect(NSImage(systemSymbolName: style.symbol, accessibilityDescription: nil) != nil, "\(id): \(style.symbol)")
