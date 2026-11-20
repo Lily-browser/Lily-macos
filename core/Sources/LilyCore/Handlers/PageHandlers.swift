@@ -22,7 +22,7 @@ extension BrowserWindowController {
         }
 
         router.on("selection.changed", from: pageOnly, as: PagePayload.Selection.self) { [weak self] ctx, p in
-            guard let self, case .page(let tabID, _, let origin) = ctx.source, let tab = self.tabs.tab(tabID) else { return .null }
+            guard let self, case .page(let tabID, true, let origin) = ctx.source, let tab = self.tabs.tab(tabID) else { return .null } // main frame only: a subframe can't set the assistant's selection
             let selection = try PagePayload.selection(p, origin: origin)
             tab.applySelection(selection.text)
             self.recordForAssistant(tabID, "selection.changed", ["text": .string(selection.text), "url": .string(selection.url.absoluteString)])
@@ -31,7 +31,7 @@ extension BrowserWindowController {
         }
 
         router.on("selection.cleared", from: pageOnly, as: PagePayload.SelectionCleared.self) { [weak self] ctx, p in
-            guard let self, case .page(let tabID, _, let origin) = ctx.source, let tab = self.tabs.tab(tabID) else { return .null }
+            guard let self, case .page(let tabID, true, let origin) = ctx.source, let tab = self.tabs.tab(tabID) else { return .null }
             _ = try PagePayload.sameOrigin(p.url, origin: origin)
             tab.applySelection(nil)
             self.recordForAssistant(tabID, "selection.cleared", .null)
