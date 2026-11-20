@@ -85,7 +85,7 @@ struct AssistantPanelView: View {
                     .focused($composerFocused)
                     .onSubmit(send)
                 if let running = chat.messages.last(where: { $0.status == .pending || $0.status == .streaming }) {
-                    Button { chat.cancel(running.id) } label: { Image(systemName: "stop.circle.fill").font(.title3) }
+                    Button { chat.cancel(running.id) } label: { Image(systemName: "stop.circle.fill").font(.title3) }.accessibilityLabel("Stop")
                         .buttonStyle(.plain).help("Stop")
                 } else {
                     Button(action: send) { Image(systemName: "arrow.up.circle.fill").font(.title3) }
@@ -151,7 +151,7 @@ private struct MessageBubble: View {
                         Button {
                             Clipboard.copy(message.content, sensitive: window.isPrivate)
                             window.showToast("Copied")
-                        } label: { Image(systemName: "doc.on.doc").font(.caption) }
+                        } label: { Image(systemName: "doc.on.doc").font(.caption) }.accessibilityLabel("Copy")
                             .buttonStyle(.plain).foregroundStyle(.tertiary).help("Copy")
                     }
                 }

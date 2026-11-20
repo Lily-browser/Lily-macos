@@ -122,9 +122,9 @@ struct FindBarView: View {
                 Text(status.text).font(.caption).foregroundStyle(status.missing ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
                     .monospacedDigit().fixedSize()
             }
-            Button { model.previous() } label: { Image(systemName: "chevron.up") }
+            Button { model.previous() } label: { Image(systemName: "chevron.up") }.accessibilityLabel("Previous Match")
                 .help("Previous (⇧⌘G)").disabled(model.found != true)
-            Button { model.next() } label: { Image(systemName: "chevron.down") }
+            Button { model.next() } label: { Image(systemName: "chevron.down") }.accessibilityLabel("Next Match")
                 .help("Next (⌘G)").disabled(model.found != true)
             Button("Done") { model.hide() }
         }

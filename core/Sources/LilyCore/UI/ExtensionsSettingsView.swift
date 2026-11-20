@@ -60,7 +60,7 @@ struct ExtensionsSettingsView: View {
                             }
                             Toggle("", isOn: Binding(get: { record.enabled }, set: { library.setEnabled(record.id, $0) }))
                                 .toggleStyle(.switch).labelsHidden().controlSize(.small)
-                            Button(role: .destructive) { library.remove(record.id) } label: { Image(systemName: "trash") }
+                            Button(role: .destructive) { library.remove(record.id) } label: { Image(systemName: "trash") }.accessibilityLabel("Remove Extension")
                                 .buttonStyle(.borderless).help("Remove")
                         }
                         .padding(.vertical, 3)
