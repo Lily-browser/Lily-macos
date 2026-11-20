@@ -13,6 +13,16 @@ import Testing
         #expect(SiteSettings.key(for: URL(string: "file:///tmp/a.html")!) == nil)
     }
 
+    @Test func permissionsAreNotSharedAcrossPortsOrSchemes() {
+        let settings = SiteSettings(directory: nil, keys: InMemoryKeyStore())
+        settings.update(url) { $0.camera = .allow }
+        #expect(settings.permission(\.camera, for: url) == .allow)
+        for other in ["http://example.com", "https://example.com:8443", "http://example.com:8080"] {
+            #expect(settings.permission(\.camera, for: URL(string: other)!) == .ask, "\(other)")
+        }
+        #expect(settings.permission(\.camera, for: URL(string: "https://example.com:443/x")!) == .allow)
+    }
+
     @Test func emptySitesAreDroppedAndDefaultsApply() {
         let settings = SiteSettings(directory: nil, keys: InMemoryKeyStore())
         #expect(settings.zoom(for: url) == SiteSettings.defaultZoom)
@@ -75,6 +85,14 @@ import Testing
         let manifest = try InjectionManifest.load(from: root.appendingPathComponent("injections/manifest.json"))
         let entry = try #require(manifest.scripts.first { $0.id == "dark-mode" })
         #expect(entry.mainFrameOnly && entry.matches == ["*"])
+    }
+
+    @Test func siteDataRecordsMatchSubdomainsAndParents() {
+        #expect(SiteSecurityView.recordMatches("example.com", host: "example.com"))
+        #expect(SiteSecurityView.recordMatches("example.com", host: "app.example.com"))
+        #expect(SiteSecurityView.recordMatches("cdn.example.com", host: "example.com"))
+        #expect(!SiteSecurityView.recordMatches("notexample.com", host: "example.com"))
+        #expect(!SiteSecurityView.recordMatches("example.org", host: "app.example.com"))
     }
 }
 

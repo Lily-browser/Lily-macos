@@ -223,7 +223,6 @@ enum Customization {
         Preferences.Key.haptics, Preferences.Key.linksOpenInLittleLily, Preferences.Key.defaultZoom,
         Preferences.Key.defaultDarkMode, Preferences.Key.newTabAction, Preferences.Key.afterClosingTab,
         Preferences.Key.linksOpenInBackground, Preferences.Key.confirmBeforeQuitting, Preferences.Key.swipeBetweenSpaces,
-        Preferences.Key.searchSuggestionRows,
     ]
 
     static var allKeys: [String] { lookKeys + behaviourKeys }

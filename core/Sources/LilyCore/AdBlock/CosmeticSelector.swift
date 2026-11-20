@@ -91,6 +91,8 @@ enum CosmeticSelector: Equatable {
                 quote = char
             } else if char == ";" || char == "@" {
                 return false
+            } else if char == "/", selector[selector.index(after: index)...].first == "*" {
+                return false // a CSS comment would hide quotes from this scan and not from WebKit
             } else if char == "[" {
                 bracketDepth += 1
             } else if char == "]" {

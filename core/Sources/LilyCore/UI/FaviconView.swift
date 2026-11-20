@@ -83,8 +83,8 @@ final class FaviconLoader {
         fetched.insert(site)
         if let task = inFlight[icon] { return await task.value }
         let task = Task<NSImage?, Never> { [session] in
-            guard Sanitize.isFetchableFavicon(icon),
-                  let (data, response) = try? await session.data(from: icon),
+            guard Sanitize.isFetchableFavicon(icon), await Self.resolvesToPublic(icon),
+                  let (data, response) = try? await session.data(from: icon, delegate: FaviconRedirectGuard()),
                   (response as? HTTPURLResponse)?.statusCode ?? 0 < 400, data.count < 512_000 else { return nil }
             return NSImage(data: data)
         }
@@ -101,6 +101,13 @@ final class FaviconLoader {
             scheduleSave()
         }
         return image
+    }
+
+    /// A public-looking name can still point at loopback or the LAN: refuse when any address it
+    /// resolves to isn't public. (A name that doesn't resolve simply fails to connect.)
+    static func resolvesToPublic(_ url: URL) async -> Bool {
+        guard let host = url.host else { return false }
+        return await !Sanitize.resolvedAddresses(of: host).contains(where: Sanitize.isNonPublicAddress)
     }
 
     /// History forgot something: kept icons would still say which sites were in it.
@@ -175,5 +182,15 @@ struct FaviconView: View {
             // An open page refreshes its site's kept icon once a session; nothing else fetches.
             if let fetch, let fresh = await FaviconLoader.shared.fetch(fetch, forPage: page, remember: remember) { image = fresh }
         }
+    }
+}
+
+
+/// Every redirect hop gets the same checks as the first URL.
+private final class FaviconRedirectGuard: NSObject, URLSessionTaskDelegate, Sendable {
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest) async -> URLRequest? {
+        guard let url = request.url, Sanitize.isFetchableFavicon(url), await FaviconLoader.resolvesToPublic(url) else { return nil }
+        return request
     }
 }

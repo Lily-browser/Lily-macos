@@ -69,6 +69,8 @@ public final class Tab: NSObject {
     private var securityScopedURL: URL?
     /// The original http:// URL while its HTTPS-First upgrade is loading.
     private var upgradedFrom: URL?
+    private var downloadsThisPage = 0
+    private var moreDownloadsAllowed = false
     private var dialogCount = 0
     private var dialogsSuppressed = false
     /// A data: URL this app chose to load (typed, history); pages may not navigate the tab to data: URLs.
@@ -416,7 +418,7 @@ public final class Tab: NSObject {
 extension Tab: WKNavigationDelegate {
     public func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                         preferences: WKWebpagePreferences) async -> (WKNavigationActionPolicy, WKWebpagePreferences) {
-        if navigationAction.shouldPerformDownload { return (.download, preferences) }
+        if navigationAction.shouldPerformDownload { return await allowDownload() ? (.download, preferences) : (.cancel, preferences) }
         let isMainFrame = navigationAction.targetFrame?.isMainFrame ?? true
         if internalPagePending, isMainFrame, navigationAction.navigationType == .other {
             internalPagePending = false
@@ -497,6 +499,29 @@ extension Tab: WKNavigationDelegate {
         return (.allow, preferences)
     }
 
+    /// A page may start one download on its own; a second one asks first (as Safari does), so it
+    /// can't fill the Downloads folder unprompted. Allowing lasts until the tab loads another page.
+    private func allowDownload() async -> Bool {
+        downloadsThisPage += 1
+        if downloadsThisPage <= 1 || moreDownloadsAllowed { return true }
+        let host = webView.url?.host ?? "This page"
+        let alert = NSAlert()
+        alert.messageText = "Allow “\(host)” to download more files?"
+        alert.informativeText = "This page has started more than one download. Files are saved to your Downloads folder."
+        alert.addButton(withTitle: "Allow")
+        alert.addButton(withTitle: "Don't Allow")
+        let response: NSApplication.ModalResponse
+        if let window = webView.window, window.attachedSheet == nil {
+            response = await withCheckedContinuation { continuation in
+                alert.beginSheetModal(for: window) { continuation.resume(returning: $0) }
+            }
+        } else {
+            response = alert.runModal()
+        }
+        moreDownloadsAllowed = response == .alertFirstButtonReturn
+        return moreDownloadsAllowed
+    }
+
     /// The HTTPS-First upgrade failed: explain the risk and let the user continue over HTTP.
     private func offerHTTPFallback(to url: URL, error: NSError) {
         guard let host = url.host?.lowercased() else { return }
@@ -573,11 +598,11 @@ extension Tab: WKNavigationDelegate {
     }
 
     public func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse) async -> WKNavigationResponsePolicy {
-        if !navigationResponse.canShowMIMEType { return .download }
+        if !navigationResponse.canShowMIMEType { return await allowDownload() ? .download : .cancel }
         if let http = navigationResponse.response as? HTTPURLResponse,
            let disposition = http.value(forHTTPHeaderField: "Content-Disposition"),
            disposition.lowercased().hasPrefix("attachment"), navigationResponse.isForMainFrame {
-            return .download
+            return await allowDownload() ? .download : .cancel
         }
         return .allow
     }
@@ -604,6 +629,8 @@ extension Tab: WKNavigationDelegate {
         upgradedFrom = nil
         showsErrorPage = committingInternalPage
         committingInternalPage = false
+        downloadsThisPage = 0
+        moreDownloadsAllowed = false
         dialogCount = 0
         dialogsSuppressed = false
         applySiteAppearance()
