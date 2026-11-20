@@ -317,6 +317,42 @@ enum SelfTest {
                   ["enabled": .bool(inspectorOn), "inspectable": .bool(page.isInspectable), "inspectElement": .bool(extras ?? false),
                    "developMenu": .bool(developMenuShown), "canShow": .bool(WebInspector.canShow(for: page))])
 
+            // The inspector must not stay docked in the pane: WebKit resizes the web view, Lily's
+            // constraints fight it, the page flashes and the inspector is covered. It opens in its own
+            // window right after WebKit attaches it. The test first forces it docked, so the detaching
+            // is what's measured: how many frames the docked inspector stays, and that its page runs.
+            if inspectorOn, let pane = page.superview, let inspector = page.value(forKey: "_inspector") as? NSObject {
+                func inspectorWindow() -> NSWindow? { NSApp.windows.first { String(describing: type(of: $0)).contains("Inspector") && $0.isVisible } }
+                func inspectorWebView(in view: NSView?) -> WKWebView? {
+                    guard let view else { return nil }
+                    if let web = view as? WKWebView, String(describing: type(of: view)).contains("Inspector") { return web }
+                    for sub in view.subviews { if let found = inspectorWebView(in: sub) { return found } }
+                    return nil
+                }
+                WebInspector.show(for: page)
+                _ = inspector.perform(NSSelectorFromString("attach"))
+                let dockedFirst = await waitUntil(6) { InspectorWindow.hasDockedInspector(in: pane) }
+                InspectorWindow.keepDetached(for: page)
+                var dockedFrames = 0
+                for _ in 0..<250 {
+                    try? await Task.sleep(for: .milliseconds(16))
+                    if InspectorWindow.hasDockedInspector(in: pane) { dockedFrames += 1 } else if inspectorWindow() != nil { break }
+                }
+                let ownWindow = inspectorWindow() != nil
+                let paneUntouched = page.frame == pane.bounds
+                var frontendState = "unset"
+                if let web = inspectorWebView(in: inspectorWindow()?.contentView) {
+                    _ = await waitUntil(8) {
+                        web.evaluateJavaScript("typeof WI === 'object' && document.readyState") { value, _ in Task { @MainActor in frontendState = (value as? String) ?? "no" } }
+                        return frontendState == "complete"
+                    }
+                }
+                check("inspector opens in its own window", dockedFirst && ownWindow && dockedFrames <= 6 && paneUntouched && frontendState == "complete",
+                      ["dockedFirst": .bool(dockedFirst), "ownWindow": .bool(ownWindow), "dockedFrames": .number(Double(dockedFrames)),
+                       "pageFillsPane": .bool(paneUntouched), "inspectorPage": .string(frontendState)])
+                _ = inspector.perform(NSSelectorFromString("close"))
+            }
+
             // The menu bar: no items a browser doesn't need, and the shortcuts moved into submenus
             // still work (⌘1 goes to the first tab).
             func items(_ menu: NSMenu) -> [NSMenuItem] { menu.items.flatMap { [$0] + ($0.submenu.map(items) ?? []) } }
