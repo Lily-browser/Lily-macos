@@ -111,7 +111,7 @@ public actor SessionStore {
             // Unreadable (tampered, or the key was removed): start fresh rather than fail launch. The old
             // plaintext file is not a fallback: it has no authentication, so it would bypass the seal.
             Log.app.error("Session could not be decrypted; discarding it: \(String(describing: error), privacy: .public)")
-            file.delete()
+            file.deleteCorrupt()
             try? FileManager.default.removeItem(at: legacyURL)
             return nil
         }

@@ -184,6 +184,8 @@ public struct SealedFile: Sendable {
     /// which is after any hop off the caller's actor: callers with a snapshot pass `reserve()`.
     public func write(_ plaintext: Data, ticket: Ticket? = nil) async throws {
         let ticket = ticket ?? reserve()
+        // The key couldn't be fetched when this file was read: don't replace data we couldn't open.
+        if Self.keyUnavailable.withLock({ $0.contains(url.path) }) { return }
         let key = try await keys.key(named: keyName)
         guard let sealed = try AES.GCM.seal(plaintext, using: key, authenticating: Data(purpose.utf8)).combined else {
             throw CocoaError(.fileWriteUnknown)
@@ -197,7 +199,12 @@ public struct SealedFile: Sendable {
     /// Returns nil when the file doesn't exist. Throws when it exists but fails authentication.
     public func read() async throws -> Data? {
         guard let sealed = try? Data(contentsOf: url) else { return nil }
-        let key = try await keys.key(named: keyName)
+        let key: SymmetricKey
+        do { key = try await keys.key(named: keyName) } catch {
+            if error is KeychainError { Self.keyUnavailable.withLock { _ = $0.insert(url.path) } }
+            throw error
+        }
+        Self.keyUnavailable.withLock { _ = $0.remove(url.path) }
         return try AES.GCM.open(AES.GCM.SealedBox(combined: sealed), using: key, authenticating: Data(purpose.utf8))
     }
 
@@ -209,6 +216,16 @@ public struct SealedFile: Sendable {
             try? FileManager.default.removeItem(at: url)
         }
     }
+
+    /// For a file that failed to read: deletes it only when the file itself is bad (wrong ciphertext or
+    /// undecodable). If the Keychain key couldn't be fetched, the data may be fine: it stays on disk and
+    /// this session's writes to it are dropped. Clear Browsing Data uses `delete()`, which always deletes.
+    public func deleteCorrupt() {
+        if Self.keyUnavailable.withLock({ $0.contains(url.path) }) { return }
+        delete()
+    }
+
+    private static let keyUnavailable = OSAllocatedUnfairLock(initialState: Set<String>())
 
     /// Per file: the last write ticket handed out, and the newest one that may no longer land.
     struct WriteOrder {

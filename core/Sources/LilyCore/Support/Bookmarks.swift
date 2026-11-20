@@ -41,7 +41,7 @@ public final class Bookmarks {
             if let data = try await file.read() { root = try JSONDecoder().decode([Node].self, from: data) }
         } catch {
             Log.app.error("Bookmarks could not be decrypted; starting empty")
-            file.delete()
+            file.deleteCorrupt()
         }
     }
 

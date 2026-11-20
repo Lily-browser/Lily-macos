@@ -56,7 +56,7 @@ public final class History {
             }
         } catch {
             Log.app.error("History could not be decrypted; starting empty: \(String(describing: error), privacy: .public)")
-            file.delete()
+            file.deleteCorrupt()
         }
     }
 

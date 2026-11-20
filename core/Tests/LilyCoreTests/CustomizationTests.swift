@@ -237,7 +237,7 @@ import Testing
             Preferences.Key.clearWebsiteDataOnQuit: true, Preferences.Key.adBlock: false,
             Preferences.Key.httpsFirst: false, Preferences.Key.removeLinkTracking: false,
             Preferences.Key.handoff: true, Preferences.Key.fraudulentSiteWarnings: false,
-            Preferences.Key.searchSuggestions: false, Preferences.Key.filterLists: ["easylist"],
+            Preferences.Key.searchSuggestions: false, Preferences.Key.searchSuggestionRows: 0, Preferences.Key.filterLists: ["easylist"],
             Preferences.Key.restoreSession: false, Preferences.Key.webDeveloperFeatures: true,
             Preferences.Key.ollamaHost: "http://127.0.0.1:11434", Preferences.Key.ollamaPins: "pin",
             ExtensionLibrary.storageKey: "x",
@@ -261,7 +261,6 @@ import Testing
             AppearanceStyle.Key.commandBarBlur, AppearanceStyle.Key.commandBarPosition, AppearanceStyle.Key.commandBarWidth,
             AppearanceStyle.Key.pinnedColumns, Preferences.Key.newTabAction, Preferences.Key.afterClosingTab,
             Preferences.Key.linksOpenInBackground, Preferences.Key.confirmBeforeQuitting, Preferences.Key.swipeBetweenSpaces,
-            Preferences.Key.searchSuggestionRows,
         ]
         for key in expected { #expect(all.contains(key), "\(key) isn't reset") }
         #expect(all.count == Customization.allKeys.count) // no key listed twice
