@@ -1,4 +1,5 @@
 import CryptoKit
+import Compression
 import Foundation
 import zlib
 
@@ -155,7 +156,8 @@ struct ExtensionPackage: Sendable, Equatable {
             case 0: contents = Data(raw)
             case 8:
                 // Apple's "zlib" algorithm is raw DEFLATE, which is what zip uses.
-                guard let inflated = try? (Data(raw) as NSData).decompressed(using: .zlib) as Data else { throw bad }
+                // Streamed with an output cap at the declared size, so a tiny entry can't expand to gigabytes first.
+                guard let inflated = inflate(Data(raw), limit: size) else { throw bad }
                 contents = inflated
             default: throw Invalid(reason: "The archive uses an unsupported compression method.")
             }
@@ -164,6 +166,25 @@ struct ExtensionPackage: Sendable, Equatable {
             files[path] = contents
         }
         return files
+    }
+
+    /// Inflates raw DEFLATE, giving up (nil) as soon as the output passes `limit` bytes.
+    static func inflate(_ input: Data, limit: Int) -> Data? {
+        var offset = 0
+        do {
+            let filter = try InputFilter(.decompress, using: .zlib) { length -> Data? in
+                guard offset < input.count else { return nil }
+                let end = min(input.count, offset + length)
+                defer { offset = end }
+                return input[offset..<end]
+            }
+            var out = Data()
+            while let chunk = try filter.readData(ofLength: 65_536) {
+                guard out.count + chunk.count <= limit else { return nil }
+                out.append(chunk)
+            }
+            return out
+        } catch { return nil }
     }
 
     /// A relative path with no way out of the extension folder; nil when it's absolute, has `..`,

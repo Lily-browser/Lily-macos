@@ -315,3 +315,13 @@ private struct FailingKeyStore: KeyStore {
         #expect(!FileManager.default.fileExists(atPath: url.path))
     }
 }
+
+@Suite struct ZipInflateLimitTests {
+    @Test func inflateStopsAtTheDeclaredSize() throws {
+        let original = Data(count: 5_000_000)
+        let packed = try (original as NSData).compressed(using: .zlib) as Data
+        #expect(packed.count < 100_000)
+        #expect(ExtensionPackage.inflate(packed, limit: 1_000) == nil)
+        #expect(ExtensionPackage.inflate(packed, limit: 5_000_000) == original)
+    }
+}
