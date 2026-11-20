@@ -110,7 +110,7 @@ public actor SessionStore {
         } catch {
             // Unreadable (tampered, or the key was removed): start fresh rather than fail launch.
             Log.app.error("Session could not be decrypted; discarding it: \(String(describing: error), privacy: .public)")
-            file.delete()
+            file.deleteCorrupt()
         }
         guard let legacy = try? Data(contentsOf: legacyURL), let session = try? JSONDecoder().decode(Session.self, from: legacy) else { return nil }
         await save(session)

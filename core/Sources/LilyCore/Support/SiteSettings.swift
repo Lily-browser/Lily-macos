@@ -59,7 +59,7 @@ public final class SiteSettings {
             if let data = try await file.read() { sites = try JSONDecoder().decode([String: Site].self, from: data) }
         } catch {
             Log.app.error("Site settings could not be decrypted; starting fresh: \(String(describing: error), privacy: .public)")
-            file.delete()
+            file.deleteCorrupt()
         }
     }
 
@@ -69,10 +69,20 @@ public final class SiteSettings {
         return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
     }
 
-    public func site(for url: URL?) -> Site { Self.key(for: url).flatMap { sites[$0] } ?? Site() }
+    /// What decisions are stored under: the host, plus ":port" for a non-default port and "http://" for
+    /// plain HTTP, so another origin of the same host never inherits a camera, microphone or script
+    /// decision. (`www.` still merges with the bare host.)
+    nonisolated static func storageKey(for url: URL?) -> String? {
+        guard let host = key(for: url), let url else { return nil }
+        var out = url.scheme == "http" ? "http://" + host : host
+        if let port = url.port, port != (url.scheme == "http" ? 80 : 443) { out += ":\(port)" }
+        return out
+    }
+
+    public func site(for url: URL?) -> Site { Self.storageKey(for: url).flatMap { sites[$0] } ?? Site() }
 
     public func update(_ url: URL?, _ change: (inout Site) -> Void) {
-        guard let key = Self.key(for: url) else { return }
+        guard let key = Self.storageKey(for: url) else { return }
         var site = sites[key] ?? Site()
         change(&site)
         sites[key] = site.isEmpty ? nil : site
