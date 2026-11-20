@@ -100,6 +100,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         adBlocker = AdBlocker(directory: ProcessInfo.processInfo.arguments.contains("--self-test") ? nil : paths.applicationSupport)
         await adBlocker.prepare()
         factory = WebViewFactory(registry: registry, siteSettings: siteSettings, adBlocker: adBlocker)
+        Task { [factory] in await factory?.removePendingSpaceData() }
         if !ProcessInfo.processInfo.arguments.contains("--self-test") {
             let workerShim = try? Data(contentsOf: paths.injections.appendingPathComponent("extension-worker-compat.js"))
             // Without it, Chrome-built extensions whose background uses missing APIs install but never start.
