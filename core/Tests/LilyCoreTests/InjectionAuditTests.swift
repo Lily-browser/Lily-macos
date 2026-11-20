@@ -49,6 +49,12 @@ import Testing
         }
     }
 
+    @Test func dialogTextIsOneBoundedLineWithoutInvisibles() {
+        #expect(Sanitize.displayText("Good\n\nIt will be able to:\n• Nothing\u{202E}evil\u{200B}") == "Good It will be able to: • Nothingevil")
+        let long = Sanitize.displayText(String(repeating: "a ", count: 500), max: 50)
+        #expect(long.count == 51 && long.hasSuffix("…"))
+    }
+
     @Test func nonPublicAddressesAreRecognised() {
         for bad in ["127.0.0.1", "10.1.2.3", "172.16.0.1", "172.31.255.1", "192.168.0.9", "169.254.169.254", "100.64.0.1", "0.0.0.0",
                     "::1", "::", "fe80::1", "fd12::1", "::ffff:127.0.0.1"] { #expect(Sanitize.isNonPublicAddress(bad), "\(bad)") }
