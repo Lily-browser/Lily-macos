@@ -481,9 +481,11 @@ public final class TabStore {
                     continue
                 }
                 created.append(openFile(file, activate: false, pinned: entry.pinned))
-            } else {
+            } else if ["http", "https"].contains(entry.url.scheme?.lowercased()) {
                 // Restored tabs load when first opened, not all at launch.
                 created.append(createAsleep(url: entry.url, title: entry.title, pinned: entry.pinned, in: currentSpaceID))
+            } else {
+                created.append(nil) // data:, webkit-extension: and other schemes are never reopened from a saved session
             }
         }
         currentSpaceID = restoring

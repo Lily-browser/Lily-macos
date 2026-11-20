@@ -20,18 +20,22 @@ struct SiteSecurity {
     var onlySecureContent: Bool
     var certificate: Certificate?
     var trust: SecTrust?
+    /// Lily's own error page, shown at the address that failed to load: no connection was made.
+    var isErrorPage = false
 
-    enum Level { case secure, mixed, insecure, local }
+    enum Level { case secure, mixed, insecure, local, notLoaded }
 
     var level: Level {
+        if isErrorPage { return .notLoaded }
         if url.isFileURL || url.scheme == "about" { return .local }
         guard isHTTPS else { return .insecure }
         return onlySecureContent ? .secure : .mixed
     }
 
     @MainActor
-    init(webView: WKWebView, url: URL) {
+    init(webView: WKWebView, url: URL, isErrorPage: Bool = false) {
         self.url = url
+        self.isErrorPage = isErrorPage
         host = url.host ?? url.absoluteString
         isHTTPS = url.scheme == "https"
         onlySecureContent = webView.hasOnlySecureContent
@@ -115,6 +119,7 @@ struct SiteSecurityView: View {
         case .mixed: return "lock.trianglebadge.exclamationmark.fill"
         case .insecure: return "exclamationmark.triangle.fill"
         case .local: return "doc.fill"
+        case .notLoaded: return "exclamationmark.triangle"
         }
     }
 
@@ -122,7 +127,7 @@ struct SiteSecurityView: View {
         switch security.level {
         case .secure: return .green
         case .mixed, .insecure: return .orange
-        case .local: return .secondary
+        case .local, .notLoaded: return .secondary
         }
     }
 
@@ -132,6 +137,7 @@ struct SiteSecurityView: View {
         case .mixed: return "Connection is encrypted, but parts of this page were loaded insecurely and could be seen or changed by others."
         case .insecure: return "Connection is not secure. Don't enter passwords or payment details on this site."
         case .local: return "This is a file on your Mac."
+        case .notLoaded: return "This page didn't load, so no connection was made."
         }
     }
 

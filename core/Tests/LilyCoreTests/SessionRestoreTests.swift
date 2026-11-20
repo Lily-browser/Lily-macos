@@ -24,6 +24,13 @@ import Testing
         return store
     }
 
+    @Test func onlyWebAddressesAreReopenedFromASavedSession() throws {
+        let bad = [URL(string: "data:text/html,<b>x</b>")!, URL(string: "webkit-extension://abc/page.html")!, URL(string: "javascript:alert(1)")!]
+        let session = Session(tabs: bad.map { Session.Entry(url: $0, title: "x", pinned: false, space: nil) } + [entry(1)], activeIndex: 0)
+        let store = try restored(session)
+        #expect(store.tabs.map(\.url?.absoluteString) == ["https://site1.example/"])
+    }
+
     @Test func aSplitAndSpacesRoundTrip() throws {
         let home = Space(name: "Home", symbol: "house.fill")
         let work = Space(name: "Work", symbol: "briefcase.fill")

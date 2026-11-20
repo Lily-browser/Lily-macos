@@ -71,7 +71,42 @@ public final class WebViewFactory {
     func removeSpaceData(_ space: UUID) async {
         isolatedSpaces.remove(space)
         spaceStores[space] = nil
-        try? await WKWebsiteDataStore.remove(forIdentifier: space)
+        // WebKit refuses while closing web views still hold the store, so retry, and remember the
+        // identifier until it works so the next launch finishes the job.
+        Self.setPending(space, true)
+        if await Self.tryRemoveStore(space) { return }
+        Log.web.error("A deleted Space's data store couldn't be removed yet; retrying")
+        Task {
+            for delay in [1, 3] as [UInt64] {
+                try? await Task.sleep(for: .seconds(delay))
+                if await Self.tryRemoveStore(space) { return }
+            }
+            // Still queued: the next launch finishes it.
+        }
+    }
+
+    private static func tryRemoveStore(_ space: UUID) async -> Bool {
+        guard (try? await WKWebsiteDataStore.remove(forIdentifier: space)) != nil else { return false }
+        setPending(space, false)
+        return true
+    }
+
+    /// Launch: finishes removals that failed earlier.
+    func removePendingSpaceData() async {
+        let pending = UserDefaults.standard.stringArray(forKey: Preferences.Key.pendingSpaceStoreRemovals) ?? []
+        for raw in pending {
+            guard let id = UUID(uuidString: raw) else { Self.setPending(raw, false); continue }
+            _ = await Self.tryRemoveStore(id)
+        }
+    }
+
+    private static func setPending(_ id: UUID, _ pending: Bool) { setPending(id.uuidString, pending) }
+
+    private static func setPending(_ id: String, _ pending: Bool) {
+        var list = UserDefaults.standard.stringArray(forKey: Preferences.Key.pendingSpaceStoreRemovals) ?? []
+        list.removeAll { $0 == id }
+        if pending { list.append(id) }
+        UserDefaults.standard.set(list.isEmpty ? nil : list, forKey: Preferences.Key.pendingSpaceStoreRemovals)
     }
 
     /// Clear Browsing Data: the shared store and every space's own store, open or not.
