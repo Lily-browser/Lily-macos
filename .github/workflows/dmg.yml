@@ -3,7 +3,7 @@
 #
 #   PR into `main` that changes ./VERSION  -> release candidate: test, build the DMG, attach it to the
 #   (or this workflow)                        run (Artifacts); a VERSION bump fails if tag vX.Y.Z exists
-#   That PR merged (push to `main`)        -> tag vX.Y.Z on the merge commit, publish the GitHub Release
+#   That PR merged (push to `main`)        -> tag vX.Y.Z on the merge commit, create a DRAFT GitHub Release
 #   Actions -> Build DMG -> Run workflow   -> on `main` only: `testing` publishes pre-release
 #                                             vX.Y.Z-testing.N; `release` publishes vX.Y.Z if it's missing
 #
@@ -225,7 +225,9 @@ jobs:
 
       - name: Publish GitHub release
         run: |
+          # Stable releases are created as DRAFTS: download the DMG from the draft, try it, edit the notes,
+          # then press Publish. (Pre-releases publish straight away.)
           flags=(--verify-tag --generate-notes --title "Lily ${TAG#v}")
-          if [ "${{ needs.build.outputs.prerelease }}" = true ]; then flags+=(--prerelease); else flags+=(--latest); fi
+          if [ "${{ needs.build.outputs.prerelease }}" = true ]; then flags+=(--prerelease); else flags+=(--draft --latest); fi
           gh release create "$TAG" "${flags[@]}" "dist/$DMG" "dist/$DMG.sha256"
-          echo "Published [$TAG]($(gh release view "$TAG" --json url -q .url))" >> "$GITHUB_STEP_SUMMARY"
+          echo "Created [$TAG]($(gh release view "$TAG" --json url -q .url))" >> "$GITHUB_STEP_SUMMARY"
