@@ -14,7 +14,6 @@ final class BrowserWebView: WKWebView {
 
     /// WebKit's menu item identifiers (stable strings) → our title (nil keeps WebKit's) and symbol.
     static let restyle: [String: (title: String?, symbol: String)] = [
-        "WKMenuItemIdentifierOpenLink": ("Open Link", "arrow.up.right.square"),
         "WKMenuItemIdentifierOpenLinkInNewWindow": ("Open Link in New Tab", "plus.square.on.square"),
         "WKMenuItemIdentifierDownloadLinkedFile": ("Download Linked File", "arrow.down.circle"),
         "WKMenuItemIdentifierCopyLink": ("Copy Link", "link"),
@@ -47,6 +46,7 @@ final class BrowserWebView: WKWebView {
 
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         super.willOpenMenu(menu, with: event)
+        Self.dropOpenLink(from: menu)
         Self.restyle(menu)
         if let newTab = menu.items.first(where: { $0.identifier?.rawValue == "WKMenuItemIdentifierOpenLinkInNewWindow" }),
            let index = menu.items.firstIndex(of: newTab) {
@@ -63,6 +63,13 @@ final class BrowserWebView: WKWebView {
             little.representedObject = newTab
             menu.insertItem(little, at: index + 2)
         }
+    }
+
+    /// Removes WebKit's plain "Open Link" (it navigates the current tab), so "Open Link in New Tab"
+    /// becomes the first item of a link's menu.
+    static func dropOpenLink(from menu: NSMenu) {
+        for item in menu.items where item.identifier?.rawValue == "WKMenuItemIdentifierOpenLink" { menu.removeItem(item) }
+        while menu.items.first?.isSeparatorItem == true { menu.removeItem(at: 0) }
     }
 
     static func restyle(_ menu: NSMenu) {
