@@ -95,6 +95,16 @@ private func temporaryDirectory() throws -> URL {
         #expect(FileManager.default.fileExists(atPath: dir.appendingPathComponent("session.sealed").path))
     }
 
+    @Test func plaintextSessionIsNotUsedWhenTheSealedOneFailsToOpen() async throws {
+        let dir = try temporaryDirectory()
+        try Data("garbage".utf8).write(to: dir.appendingPathComponent("session.sealed"))
+        let legacy = dir.appendingPathComponent("session.json")
+        try JSONEncoder().encode(sample).write(to: legacy)
+        let store = SessionStore(directory: dir, keys: InMemoryKeyStore())
+        #expect(await store.load() == nil)
+        #expect(!FileManager.default.fileExists(atPath: legacy.path))
+    }
+
     @Test func ollamaHostCredentialsAreDropped() {
         #expect(AssistantConfiguration.normalizedHost("https://user:pa55@ollama.example").absoluteString == "https://ollama.example")
     }
