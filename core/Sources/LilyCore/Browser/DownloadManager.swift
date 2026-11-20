@@ -152,9 +152,19 @@ public final class DownloadManager: NSObject, WKDownloadDelegate {
 
     /// The last private window closed: nothing it downloaded stays listed.
     public func forgetPrivate() {
-        let gone = Set(items.filter { $0.isPrivate && !$0.isActive }.map(\.id))
+        // Downloads still running are cancelled too, and their callbacks dropped, so none can
+        // reappear in a later private window.
+        let gone = Set(items.filter(\.isPrivate).map(\.id))
+        for id in gone {
+            if let download = downloads.removeValue(forKey: id) {
+                ids.removeValue(forKey: ObjectIdentifier(download))
+                download.cancel { _ in }
+            }
+            progressObservations[id] = nil
+            lastProgressUpdate[id] = nil
+            resumeData[id] = nil
+        }
         items.removeAll { gone.contains($0.id) }
-        gone.forEach { resumeData[$0] = nil }
     }
 
     /// macOS records where a downloaded file came from in two places on the file: the

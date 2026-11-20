@@ -34,13 +34,20 @@ jobs:
             echo "| Branch | Status | Action |"
             echo "|---|---|---|"
           } >> "$GITHUB_STEP_SUMMARY"
-          gh api --paginate "repos/$repo/branches" -q '.[].name' | while read -r branch; do
+          gh api --paginate "repos/$repo/branches" -q '.[] | [.name, .commit.sha] | @tsv' | while IFS=$'\t' read -r branch tip; do
             [ "$branch" = main ] && continue
             open=$(gh pr list -R "$repo" --head "$branch" --state open --json number -q 'length')
             [ "$open" -gt 0 ] && continue
-            last=$(gh pr list -R "$repo" --head "$branch" --state all --limit 1 --json state,closedAt,mergedAt -q '.[0] // empty')
+            last=$(gh pr list -R "$repo" --head "$branch" --state all --limit 1 --json state,closedAt,mergedAt,headRefOid,isCrossRepository -q '.[0] // empty')
             if [ -z "$last" ]; then
               echo "| \`$branch\` | no pull request | report only |" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            # Only a merged PR from this repo whose head is exactly this branch's tip proves the work landed.
+            # A closed-unmerged PR, a fork PR with the same name, or commits pushed since are never deleted.
+            if [ "$(jq -r '.state' <<< "$last")" != MERGED ] || [ "$(jq -r '.isCrossRepository' <<< "$last")" = true ] \
+               || [ "$(jq -r '.headRefOid' <<< "$last")" != "$tip" ]; then
+              echo "| \`$branch\` | last PR not merged at this tip | report only |" >> "$GITHUB_STEP_SUMMARY"
               continue
             fi
             closed=$(jq -r '.mergedAt // .closedAt' <<< "$last")

@@ -67,7 +67,30 @@ enum Sanitize {
     /// Favicons are fetched by the app itself, outside WebKit's protections, so only HTTPS to public
     /// hosts: never loopback/LAN devices (request forgery), never embedded credentials.
     static func isFetchableFavicon(_ url: URL) -> Bool {
-        guard url.scheme == "https", let host = url.host, url.user == nil, url.password == nil else { return false }
+        guard url.scheme == "https", var host = url.host?.lowercased(), url.user == nil, url.password == nil else { return false }
+        while host.hasSuffix(".") { host.removeLast() } // "localhost." is still localhost
+        // A last label that starts with a digit is an IPv4 form (2130706433, 0x7f.1, 127.1), never a real TLD.
+        guard let last = host.split(separator: ".").last, last.first?.isNumber == false else { return false }
         return !HTTPSFirst.isPrivate(host)
+    }
+
+    /// True for loopback, link-local, private, unique-local, CGNAT, multicast and unspecified addresses.
+    static func isNonPublicAddress(_ address: String) -> Bool {
+        let address = address.lowercased()
+        if address.contains(":") {
+            if address.hasPrefix("::ffff:"), address.contains(".") { return isNonPublicAddress(String(address.dropFirst(7))) }
+            let first = address.split(separator: ":", omittingEmptySubsequences: false).first.flatMap { UInt16($0, radix: 16) } ?? 0
+            return address == "::" || address == "::1" || first & 0xfe00 == 0xfc00 || first & 0xffc0 == 0xfe80 || first & 0xff00 == 0xff00
+        }
+        let octets = address.split(separator: ".").compactMap { UInt8($0) }
+        guard octets.count == 4 else { return true }
+        let (a, b) = (octets[0], octets[1])
+        return a == 0 || a == 10 || a == 127 || a >= 224 || (a == 169 && b == 254) || (a == 172 && b & 0xf0 == 16)
+            || (a == 192 && b == 168) || (a == 100 && b & 0xc0 == 64)
+    }
+
+    /// The addresses a name resolves to; empty when it doesn't resolve.
+    static func resolvedAddresses(of host: String) async -> [String] {
+        await Task.detached { Host(name: host).addresses }.value
     }
 }

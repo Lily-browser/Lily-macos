@@ -12,6 +12,16 @@ import Testing
         #expect(SiteSettings.key(for: URL(string: "file:///tmp/a.html")!) == nil)
     }
 
+    @Test func permissionsAreNotSharedAcrossPortsOrSchemes() {
+        let settings = SiteSettings(directory: nil, keys: InMemoryKeyStore())
+        settings.update(url) { $0.camera = .allow }
+        #expect(settings.permission(\.camera, for: url) == .allow)
+        for other in ["http://example.com", "https://example.com:8443", "http://example.com:8080"] {
+            #expect(settings.permission(\.camera, for: URL(string: other)!) == .ask, "\(other)")
+        }
+        #expect(settings.permission(\.camera, for: URL(string: "https://example.com:443/x")!) == .allow)
+    }
+
     @Test func emptySitesAreDroppedAndDefaultsApply() {
         let settings = SiteSettings(directory: nil, keys: InMemoryKeyStore())
         #expect(settings.zoom(for: url) == SiteSettings.defaultZoom)

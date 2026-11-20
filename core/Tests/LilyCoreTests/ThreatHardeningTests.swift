@@ -184,9 +184,35 @@ private func temporaryDirectory() throws -> URL {
         let good = Data(repeating: 7, count: 32).base64EncodedString()
         #expect(AssistantConfiguration.parsePins("\(good), not-base64, \(Data(count: 16).base64EncodedString())") == [good])
     }
+
+    @Test func pinsAcceptPrefixAndUnpaddedFormsAndBadTokensFailClosed() {
+        let raw = Data(repeating: 9, count: 32)
+        let padded = raw.base64EncodedString()
+        let unpadded = padded.replacingOccurrences(of: "=", with: "")
+        #expect(AssistantConfiguration.parsePins("sha256/\(padded)") == [padded])
+        #expect(AssistantConfiguration.parsePins(unpadded) == [padded])
+        var config = AssistantConfiguration(host: "https://ollama.example", defaultModel: nil)
+        config.hasInvalidPins = true
+        #expect(config.transportError != nil)
+    }
+
+    @Test func loopbackMeansLiteralLoopbackOnly() {
+        for ok in ["localhost", "::1", "[::1]", "127.0.0.1", "127.255.0.3"] { #expect(HTTPSFirst.isLoopback(ok), "\(ok)") }
+        for bad in ["127.evil.example", "127.0.0.1.nip.io", "127.1", "127.0.0.256", "127.0.0.", "1270.0.0.1"] { #expect(!HTTPSFirst.isLoopback(bad), "\(bad)") }
+    }
 }
 
 @Suite @MainActor struct ClipboardTests {
+    @Test func concealMarksACopyMadeElsewhere() {
+        let board = NSPasteboard(name: NSPasteboard.Name("lily-test-\(UUID().uuidString)"))
+        defer { board.releaseGlobally() }
+        board.clearContents()
+        board.setString("page text", forType: .string)
+        Clipboard.conceal(board)
+        #expect(board.string(forType: .string) == "page text")
+        #expect(board.types?.contains(Clipboard.concealed) == true && board.types?.contains(Clipboard.transient) == true)
+    }
+
     @Test func sensitiveCopiesAreConcealedAndTransient() {
         let board = NSPasteboard(name: NSPasteboard.Name("lily-test-\(UUID().uuidString)"))
         defer { board.releaseGlobally() }
@@ -286,5 +312,36 @@ actor GatedKeyStore: KeyStore {
         #expect(!Tab.isUpgrade(URL(string: "http://example.com/a")!, of: original))
         #expect(!Tab.isUpgrade(nil, of: original))
         #expect(Tab.isUpgrade(URL(string: "https://example.com:8080/")!, of: URL(string: "http://example.com:8080/")!))
+
+private struct FailingKeyStore: KeyStore {
+    func key(named name: String) async throws -> SymmetricKey { throw KeychainError(status: errSecInteractionNotAllowed, operation: "read") }
+    func deleteKey(named name: String) async throws {}
+}
+
+@Suite struct SealedFileKeyErrorTests {
+    @Test func transientKeychainErrorKeepsTheFileAndDropsWrites() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("x.sealed")
+        let good = SealedFile(url: url, keyName: "k", purpose: "p", keys: InMemoryKeyStore())
+        try await good.write(Data("data".utf8))
+        let bad = SealedFile(url: url, keyName: "k", purpose: "p", keys: FailingKeyStore())
+        await #expect(throws: KeychainError.self) { _ = try await bad.read() }
+        bad.deleteCorrupt()
+        try? await bad.write(Data("empty".utf8))
+        #expect(FileManager.default.fileExists(atPath: url.path))
+        bad.delete() // an explicit clear still deletes
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+    }
+}
+
+@Suite struct ZipInflateLimitTests {
+    @Test func inflateStopsAtTheDeclaredSize() throws {
+        let original = Data(count: 5_000_000)
+        let packed = try (original as NSData).compressed(using: .zlib) as Data
+        #expect(packed.count < 100_000)
+        #expect(ExtensionPackage.inflate(packed, limit: 1_000) == nil)
+        #expect(ExtensionPackage.inflate(packed, limit: 5_000_000) == original)
     }
 }

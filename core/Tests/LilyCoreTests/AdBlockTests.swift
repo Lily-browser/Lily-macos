@@ -95,6 +95,13 @@ private func selectors(_ rules: [[String: Any]]) -> [String] {
         #expect(CosmeticSelector.parse(#"a[aria-label="Реклама"]"#) != nil)
     }
 
+    @Test func cssCommentsCannotHideQuotesFromTheValidator() {
+        for bad in [#"a/*'*/;@import "https://t.example/x.css";/*'*/"#, "a/*", "a /* x */ b"] {
+            #expect(CosmeticSelector.parse(bad) == nil, "\(bad)")
+        }
+        #expect(CosmeticSelector.parse(#"a[href*="/*"]"#) != nil)
+    }
+
     @Test func styleRulesAreLimitedToLayoutProperties() {
         #expect(CosmeticSelector.parse("body:style(overflow: auto !important; position: static)")
                 == .procedural(ProceduralFilter(selector: "body", steps: [], style: "overflow: auto; position: static")))
