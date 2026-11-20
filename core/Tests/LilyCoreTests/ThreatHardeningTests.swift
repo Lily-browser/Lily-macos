@@ -187,6 +187,16 @@ private func temporaryDirectory() throws -> URL {
 }
 
 @Suite @MainActor struct ClipboardTests {
+    @Test func concealMarksACopyMadeElsewhere() {
+        let board = NSPasteboard(name: NSPasteboard.Name("lily-test-\(UUID().uuidString)"))
+        defer { board.releaseGlobally() }
+        board.clearContents()
+        board.setString("page text", forType: .string)
+        Clipboard.conceal(board)
+        #expect(board.string(forType: .string) == "page text")
+        #expect(board.types?.contains(Clipboard.concealed) == true && board.types?.contains(Clipboard.transient) == true)
+    }
+
     @Test func sensitiveCopiesAreConcealedAndTransient() {
         let board = NSPasteboard(name: NSPasteboard.Name("lily-test-\(UUID().uuidString)"))
         defer { board.releaseGlobally() }

@@ -8,6 +8,13 @@ enum Clipboard {
     static let concealed = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
     static let transient = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
 
+    /// Marks what is already on the pasteboard (a copy WebKit made) as Concealed/Transient.
+    static func conceal(_ pasteboard: NSPasteboard = .general) {
+        pasteboard.addTypes([concealed, transient], owner: nil)
+        pasteboard.setString("", forType: concealed)
+        pasteboard.setString("", forType: transient)
+    }
+
     static func copy(_ string: String, sensitive: Bool, to pasteboard: NSPasteboard = .general) {
         pasteboard.clearContents()
         if sensitive {
