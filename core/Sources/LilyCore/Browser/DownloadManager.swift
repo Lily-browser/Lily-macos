@@ -92,7 +92,12 @@ public final class DownloadManager: NSObject, WKDownloadDelegate {
     public func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
         guard let id = finish(download) else { return }
         let cancelled = (error as? URLError)?.code == .cancelled
-        if let resumeData { self.resumeData[id] = resumeData }
+        let isPrivate = items.first(where: { $0.id == id })?.isPrivate == true
+        // Resume data holds the source address, so a private download keeps none; Retry starts over.
+        if let resumeData, !isPrivate { self.resumeData[id] = resumeData }
+        if isPrivate, let file = items.first(where: { $0.id == id })?.destination, FileManager.default.fileExists(atPath: file.path) {
+            Self.scrubOrigin(file)
+        }
         update(id) { $0.state = cancelled ? .cancelled : .failed(Sanitize.errorMessage(error)) }
         Log.web.error("Download failed: \(error.localizedDescription, privacy: .private)")
     }
@@ -101,7 +106,10 @@ public final class DownloadManager: NSObject, WKDownloadDelegate {
 
     public func cancel(_ id: UUID) {
         downloads[id]?.cancel { [weak self] data in
-            Task { @MainActor in if let data { self?.resumeData[id] = data } }
+            Task { @MainActor in
+                guard let self, let data, self.items.first(where: { $0.id == id })?.isPrivate != true else { return }
+                self.resumeData[id] = data
+            }
         }
     }
 
@@ -152,9 +160,19 @@ public final class DownloadManager: NSObject, WKDownloadDelegate {
 
     /// The last private window closed: nothing it downloaded stays listed.
     public func forgetPrivate() {
-        let gone = Set(items.filter { $0.isPrivate && !$0.isActive }.map(\.id))
+        // Downloads still running are cancelled too, and their callbacks dropped, so none can
+        // reappear in a later private window.
+        let gone = Set(items.filter(\.isPrivate).map(\.id))
+        for id in gone {
+            if let download = downloads.removeValue(forKey: id) {
+                ids.removeValue(forKey: ObjectIdentifier(download))
+                download.cancel { _ in }
+            }
+            progressObservations[id] = nil
+            lastProgressUpdate[id] = nil
+            resumeData[id] = nil
+        }
         items.removeAll { gone.contains($0.id) }
-        gone.forEach { resumeData[$0] = nil }
     }
 
     /// macOS records where a downloaded file came from in two places on the file: the
