@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Please **don't open a public issue** for security problems. Report them privately through GitHub:
-**[Security → Report a vulnerability](https://github.com/pwngoblin/Lily/security/advisories/new)**.
+**[Security → Report a vulnerability](https://github.com/Lily-browser/Lily-macos/security/advisories/new)**.
 
 Include what you found, how to reproduce it (a minimal page, extension or steps), the Lily version
 (About Lily, or the DMG name) and your macOS version. Lily is maintained by one person, so replies are

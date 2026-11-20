@@ -23,7 +23,7 @@ Lily is written in Swift with AppKit and SwiftUI and renders pages with WebKit (
 
 ## Install
 
-1. Download a DMG from [Releases](https://github.com/pwngoblin/Lily/releases), or from a workflow run's artifacts.
+1. Download a DMG from [Releases](https://github.com/Lily-browser/Lily-macos/releases), or from a workflow run's artifacts.
 2. Open it and drag **Lily** to **Applications**.
 3. Builds without a Developer ID signature are blocked on first launch: open **System Settings → Privacy & Security** and click **Open Anyway**.
 
@@ -376,7 +376,7 @@ Hardened runtime is already on (`--options runtime,library,restrict`, enforced b
 3. **Provisioned entitlements**: the data-protection Keychain and, only if sync is approved, iCloud (see below).
 Until then releases use the self-signed "Lily Release Signing" identity.
 
-**Planned: sync between Macs (investigation only, nothing built; see [#102](https://github.com/pwngoblin/Lily/issues/102))**
+**Planned: sync between Macs (investigation only, nothing built; see [#102](https://github.com/Lily-browser/Lily-macos/issues/102))**
 Today nothing syncs: every store is a per-device sealed file and the key is `ThisDeviceOnly`. iCloud (CloudKit) needs a paid Apple Developer Program membership and a provisioned build, which the self-signed release identity can't provide, and it would change the "nothing leaves your Mac" promise. Action plan, each step gated on the owner's go-ahead:
 1. **Decide** whether to sync at all and which data (proposal: bookmarks, spaces, pinned tabs; never extensions, permissions, form drafts, cookies or private-window data). Off by default.
 2. **Data-model prep** (no network): stable IDs, `modifiedAt`, tombstones and schema versions for the synced stores; define what Clear Browsing Data deletes on every device.
@@ -425,4 +425,4 @@ Without them, builds are ad-hoc signed and the first launch has to be approved m
 
 ## License
 
-Lily is free software under the [GNU General Public License v3.0](LICENSE) (GPL-3.0-only): you may use, study, share and change it, and anything you distribute that's built from it must be shared under the same license, with its source. Questions and ideas: [Discussions](https://github.com/pwngoblin/Lily/discussions); security reports: [SECURITY.md](SECURITY.md).
+Lily is free software under the [GNU General Public License v3.0](LICENSE) (GPL-3.0-only): you may use, study, share and change it, and anything you distribute that's built from it must be shared under the same license, with its source. Questions and ideas: [Discussions](https://github.com/Lily-browser/Lily-macos/discussions); security reports: [SECURITY.md](SECURITY.md).

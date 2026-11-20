@@ -1,6 +1,6 @@
 # Contributing
 
-Lily is licensed under the [GPL-3.0](LICENSE). By opening a pull request you agree that your contribution is licensed under it too. Questions go to [Discussions](https://github.com/pwngoblin/Lily/discussions), bugs and feature requests to issues, vulnerabilities to [SECURITY.md](SECURITY.md).
+Lily is licensed under the [GPL-3.0](LICENSE). By opening a pull request you agree that your contribution is licensed under it too. Questions go to [Discussions](https://github.com/Lily-browser/Lily-macos/discussions), bugs and feature requests to issues, vulnerabilities to [SECURITY.md](SECURITY.md).
 
 ## Branches
 
