@@ -8,6 +8,19 @@ enum Sanitize {
     /// they are; system errors by their localized description with file paths and file URLs
     /// replaced; and nothing from Swift errors whose description is a type dump. Details belong in
     /// the private log, never on screen.
+    /// Untrusted text shown in a dialog on one line: control, bidi and invisible format characters
+    /// removed, whitespace collapsed, cut to `max` characters.
+    static func displayText(_ raw: String, max: Int = 120) -> String {
+        let kept = raw.unicodeScalars.map { $0.properties.isWhitespace ? " " : $0 }.filter { scalar in
+            switch scalar.properties.generalCategory {
+            case .control, .format, .lineSeparator, .paragraphSeparator, .privateUse, .unassigned, .surrogate: return false
+            default: return true
+            }
+        }
+        let line = String(String.UnicodeScalarView(kept)).split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        return line.count > max ? String(line.prefix(max)) + "…" : line
+    }
+
     static func errorMessage(_ error: Error) -> String {
         if let ipc = error as? IPCError { return String(ipc.message.prefix(maxErrorLength)) }
         var text = error.localizedDescription

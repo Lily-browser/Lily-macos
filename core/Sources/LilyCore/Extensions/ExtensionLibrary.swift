@@ -286,21 +286,23 @@ final class ExtensionLibrary {
         alert.alertStyle = .critical
         alert.messageText = "This extension can't be added"
         alert.informativeText = "It could run code that isn't part of the extension itself, so it can't be checked or pinned:\n\n"
-            + audit.findings.filter { $0.severity == .blocked }.map { "• \($0.title) (\($0.detail))" }.joined(separator: "\n")
+            + audit.findings.filter { $0.severity == .blocked }.map { "• \(Sanitize.displayText($0.title, max: 100)) (\(Sanitize.displayText($0.detail, max: 160)))" }.joined(separator: "\n")
         alert.runModal()
     }
 
     private func confirmInstall(_ manifest: ExtensionManifest, package: ExtensionPackage, audit: ExtensionAudit, hash: String,
                                 replacing oldVersion: String? = nil) -> Bool {
         let alert = NSAlert()
+        let name = Sanitize.displayText(manifest.name, max: 60)
+        let version = Sanitize.displayText(manifest.version, max: 30)
         switch oldVersion {
-        case nil: alert.messageText = "Add “\(manifest.name)”?"
-        case manifest.version?: alert.messageText = "Reinstall “\(manifest.name)” \(manifest.version)?"
-        case let old?: alert.messageText = "Update “\(manifest.name)” from \(old) to \(manifest.version)?"
+        case nil: alert.messageText = "Add “\(name)”?"
+        case manifest.version?: alert.messageText = "Reinstall “\(name)” \(version)?"
+        case let old?: alert.messageText = "Update “\(name)” from \(Sanitize.displayText(old, max: 30)) to \(version)?"
         }
         var lines: [String] = []
-        if let description = manifest.description, !description.isEmpty { lines.append(description) }
-        let hosts = Self.requestedPatterns(manifest)
+        if let description = manifest.description, !description.isEmpty { lines.append(Sanitize.displayText(description, max: 200)) }
+        let hosts = Self.requestedPatterns(manifest).map { Sanitize.displayText($0, max: 80) }
         lines.append("It will be able to:")
         lines += manifest.permissions.sorted().map { "• \(Self.describe($0))" }
         if !hosts.isEmpty {
@@ -311,9 +313,9 @@ final class ExtensionLibrary {
         let notable = audit.findings.filter { $0.severity >= .warning }
         if !notable.isEmpty {
             lines.append("\nReview found:")
-            lines += notable.map { "⚠︎ \($0.title) (\($0.detail))" }
+            lines += notable.map { "⚠︎ \(Sanitize.displayText($0.title, max: 100)) (\(Sanitize.displayText($0.detail, max: 160)))" }
         }
-        for info in audit.findings where info.severity == .info { lines.append("• \(info.title) (\(info.detail))") }
+        for info in audit.findings where info.severity == .info { lines.append("• \(Sanitize.displayText(info.title, max: 100)) (\(Sanitize.displayText(info.detail, max: 160)))") }
         if package.files[ExtensionCompat.shimPath] != nil {
             lines.append("\nLily adds stand-ins for Chrome features WebKit doesn't have (privacy settings and similar), so its background can start; they do nothing outside the extension. If it asks for notifications, Lily shows them through macOS.")
         }
@@ -342,7 +344,7 @@ final class ExtensionLibrary {
         case "notifications": return "Show notifications"
         case "clipboardWrite": return "Write to the clipboard"
         case "nativeMessaging": return "Talk to apps on your Mac (not supported in Lily)"
-        default: return permission
+        default: return Sanitize.displayText(permission, max: 60)
         }
     }
 }
