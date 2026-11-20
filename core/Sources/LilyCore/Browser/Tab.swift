@@ -395,13 +395,25 @@ public final class Tab: NSObject {
         delegate?.tabDidChange(self)
     }
 
+    /// True when `failed` is the https twin (same host and port) of the http URL that was upgraded.
+    nonisolated static func isUpgrade(_ failed: URL?, of original: URL) -> Bool {
+        guard let failed, failed.scheme?.lowercased() == "https",
+              failed.host?.lowercased() == original.host?.lowercased() else { return false }
+        return failed.port == (original.port == 80 ? nil : original.port)
+    }
+
     private func showError(_ error: Error, for failingURL: URL?) {
         let nsError = error as NSError
         if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled { return }
         if let original = upgradedFrom {
             upgradedFrom = nil
-            offerHTTPFallback(to: original, error: nsError)
-            return
+            // Only the failure of the upgraded request itself offers the HTTP fallback; an unrelated
+            // navigation failing later must not name a stale host or allow it over HTTP.
+            let failed = failingURL ?? (nsError.userInfo[NSURLErrorFailingURLErrorKey] as? URL)
+            if Self.isUpgrade(failed, of: original) {
+                offerHTTPFallback(to: original, error: nsError)
+                return
+            }
         }
         if nsError.domain == "WebKitErrorDomain" && (nsError.code == 102 || nsError.code == 204) { return } // policy change / plug-in handled
         let target = failingURL ?? (nsError.userInfo[NSURLErrorFailingURLErrorKey] as? URL)

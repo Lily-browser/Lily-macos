@@ -303,6 +303,18 @@ actor GatedKeyStore: KeyStore {
     }
 }
 
+@Suite struct HTTPSFirstBindingTests {
+    @Test func fallbackOnlyForTheUpgradedRequest() {
+        let original = URL(string: "http://example.com/a")!
+        #expect(Tab.isUpgrade(URL(string: "https://example.com/a")!, of: original))
+        #expect(Tab.isUpgrade(URL(string: "https://EXAMPLE.com/other")!, of: original))
+        #expect(!Tab.isUpgrade(URL(string: "https://other.example/")!, of: original))
+        #expect(!Tab.isUpgrade(URL(string: "http://example.com/a")!, of: original))
+        #expect(!Tab.isUpgrade(nil, of: original))
+        #expect(Tab.isUpgrade(URL(string: "https://example.com:8080/")!, of: URL(string: "http://example.com:8080/")!))
+    }
+}
+
 private struct FailingKeyStore: KeyStore {
     func key(named name: String) async throws -> SymmetricKey { throw KeychainError(status: errSecInteractionNotAllowed, operation: "read") }
     func deleteKey(named name: String) async throws {}
