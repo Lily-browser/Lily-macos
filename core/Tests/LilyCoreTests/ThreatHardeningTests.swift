@@ -292,3 +292,26 @@ actor GatedKeyStore: KeyStore {
         #expect(try await file.read() == Data("newer".utf8))
     }
 }
+
+private struct FailingKeyStore: KeyStore {
+    func key(named name: String) async throws -> SymmetricKey { throw KeychainError(status: errSecInteractionNotAllowed, operation: "read") }
+    func deleteKey(named name: String) async throws {}
+}
+
+@Suite struct SealedFileKeyErrorTests {
+    @Test func transientKeychainErrorKeepsTheFileAndDropsWrites() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("x.sealed")
+        let good = SealedFile(url: url, keyName: "k", purpose: "p", keys: InMemoryKeyStore())
+        try await good.write(Data("data".utf8))
+        let bad = SealedFile(url: url, keyName: "k", purpose: "p", keys: FailingKeyStore())
+        await #expect(throws: KeychainError.self) { _ = try await bad.read() }
+        bad.deleteCorrupt()
+        try? await bad.write(Data("empty".utf8))
+        #expect(FileManager.default.fileExists(atPath: url.path))
+        bad.delete() // an explicit clear still deletes
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+    }
+}

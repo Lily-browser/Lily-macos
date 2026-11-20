@@ -59,7 +59,7 @@ public final class SiteSettings {
             if let data = try await file.read() { sites = try JSONDecoder().decode([String: Site].self, from: data) }
         } catch {
             Log.app.error("Site settings could not be decrypted; starting fresh: \(String(describing: error), privacy: .public)")
-            file.delete()
+            file.deleteCorrupt()
         }
     }
 
