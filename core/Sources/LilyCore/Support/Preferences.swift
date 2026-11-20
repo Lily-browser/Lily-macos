@@ -7,6 +7,8 @@ public enum Preferences {
         public static let searchEngine = "SearchEngine"
         public static let homepage = "Homepage"
         public static let ollamaHost = "OllamaHost"
+        /// Deleted Spaces whose own data store WebKit hasn't removed yet (identifiers only), retried at launch.
+        public static let pendingSpaceStoreRemovals = "PendingSpaceStoreRemovals"
         public static let agentModel = "AgentModel"
         /// Comma-separated base64 SHA-256 SPKI pins for a remote (HTTPS) Ollama.
         public static let ollamaPins = "OllamaPinnedKeys"
