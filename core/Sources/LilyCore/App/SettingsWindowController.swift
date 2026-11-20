@@ -214,7 +214,7 @@ struct TabsSettingsView: View {
 struct AppearanceSettingsView: View {
     /// The pane's sections, one at a time so the window stays a sensible size.
     enum Section: String, CaseIterable {
-        case theme = "Theme", sidebar = "Sidebar", page = "Page", commandBar = "Command Bar"
+        case theme = "Theme", sidebar = "Sidebar", page = "Page", commandBar = "Command Bar", icon = "Icon"
     }
 
     @State private var section = Section.theme
@@ -244,6 +244,10 @@ struct AppearanceSettingsView: View {
     @AppStorage(AppearanceStyle.Key.commandBarBlur) private var blur = CommandBarBlur.default.rawValue
     @AppStorage(AppearanceStyle.Key.commandBarPosition) private var barPosition = CommandBarPosition.default.rawValue
     @AppStorage(AppearanceStyle.Key.commandBarWidth) private var barWidth = CommandBarWidth.default.rawValue
+    // Icon
+    @AppStorage(AppIconController.Key.variant) private var iconVariant = AppIconVariant.default.rawValue
+    @AppStorage(AppIconController.Key.matchesDarkMode) private var iconMatchesDark = true
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(spacing: 16) {
@@ -252,13 +256,14 @@ struct AppearanceSettingsView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(width: 400)
+            .frame(width: 440)
             Form {
                 switch section {
                 case .theme: theme
                 case .sidebar: sidebar
                 case .page: page
                 case .commandBar: commandBar
+                case .icon: icon
                 }
                 LabeledContent("") {
                     Button("Restore \(section.rawValue) Defaults") { restoreDefaults() }
@@ -325,6 +330,36 @@ struct AppearanceSettingsView: View {
             }
         }
         LabeledContent("Preview:") { preview }
+    }
+
+    @ViewBuilder private var icon: some View {
+        let previewDark = iconMatchesDark && colorScheme == .dark
+        LabeledContent("Icon:") {
+            HStack(spacing: 10) {
+                ForEach(AppIconVariant.allCases, id: \.rawValue) { variant in
+                    let selected = iconVariant == variant.rawValue
+                    Button { iconVariant = variant.rawValue } label: {
+                        VStack(spacing: 4) {
+                            Image(nsImage: AppIconController.preview(variant, dark: previewDark))
+                            Text(variant.label).font(.caption)
+                        }
+                        .padding(6)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(selected ? Color.accentColor.opacity(0.16) : .clear))
+                        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(selected ? Color.accentColor : .clear, lineWidth: 2))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(variant.label)
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                }
+            }
+        }
+        LabeledContent("") {
+            Toggle("Match dark mode", isOn: $iconMatchesDark)
+        }
+        LabeledContent("") {
+            Text("Shown in the Dock and ⌘-Tab while Lily is running; macOS keeps the original icon in Finder and when Lily is closed. With Match dark mode on, the icon turns darker whenever Lily's appearance is dark.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     @ViewBuilder private var page: some View {
@@ -412,6 +447,8 @@ struct AppearanceSettingsView: View {
             keys = [AppearanceStyle.Key.pageCornerRadius, AppearanceStyle.Key.pagePadding]
         case .commandBar:
             keys = [AppearanceStyle.Key.commandBarBlur, AppearanceStyle.Key.commandBarPosition, AppearanceStyle.Key.commandBarWidth]
+        case .icon:
+            keys = [AppIconController.Key.variant, AppIconController.Key.matchesDarkMode]
         }
         Customization.reset(keys)
         if section == .theme { AppearanceStyle.applyAppAppearance() }

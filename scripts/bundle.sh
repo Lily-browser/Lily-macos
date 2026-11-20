@@ -42,7 +42,11 @@ strip -rSTx "$EXE"
 cp -R "$ROOT/injections" "$RES/injections"
 find "$OUT" -name .DS_Store -delete
 
-swift "$ROOT/scripts/make-icon.swift" "$OUT/Contents/Resources/AppIcon.icns"
+# The default icon comes from the same drawing the app uses for its icon choices (AppIconArt.swift).
+ICON_TMP="$(umask 077; mktemp -d)" # private; umask only inside the substitution, the bundle keeps normal permissions
+trap 'rm -rf "${ICON_TMP:?}"' EXIT
+swiftc -O -o "$ICON_TMP/make-icon" "$ROOT/scripts/make-icon/main.swift" "$ROOT/core/Sources/LilyCore/UI/AppIconArt.swift"
+"$ICON_TMP/make-icon" "$OUT/Contents/Resources/AppIcon.icns"
 
 cat > "$OUT/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

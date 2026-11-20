@@ -353,6 +353,35 @@ enum SelfTest {
                 _ = inspector.perform(NSSelectorFromString("close"))
             }
 
+            // App icon choices through the real controller: a throwaway defaults suite, so the
+            // person's own setting is never touched. (What the system reports back for the icon isn't
+            // the image that was set, so the controller's decision is what's checked.)
+            let iconSuite = "dev.lily.selftest.icon"
+            if let defaults = UserDefaults(suiteName: iconSuite) {
+                defer { defaults.removePersistentDomain(forName: iconSuite) }
+                let controller = AppIconController()
+                defaults.set(AppIconVariant.rose.rawValue, forKey: AppIconController.Key.variant)
+                defaults.set(false, forKey: AppIconController.Key.matchesDarkMode)
+                controller.apply(defaults: defaults)
+                let variantShown = controller.applied == .init(variant: .rose, dark: false)
+                defaults.set(true, forKey: AppIconController.Key.matchesDarkMode)
+                NSApp.appearance = NSAppearance(named: .darkAqua)
+                controller.apply(defaults: defaults)
+                let darkFollowed = controller.applied == .init(variant: .rose, dark: true)
+                NSApp.appearance = NSAppearance(named: .aqua)
+                controller.apply(defaults: defaults)
+                let lightFollowed = controller.applied == .init(variant: .rose, dark: false)
+                NSApp.appearance = nil
+                AppearanceStyle.applyAppAppearance()
+                defaults.removeObject(forKey: AppIconController.Key.variant)
+                defaults.set(false, forKey: AppIconController.Key.matchesDarkMode)
+                controller.apply(defaults: defaults)
+                let backToBundle = controller.applied == nil
+                check("app icon choices", variantShown && darkFollowed && lightFollowed && backToBundle,
+                      ["variantShown": .bool(variantShown), "darkFollowed": .bool(darkFollowed),
+                       "lightFollowed": .bool(lightFollowed), "backToBundleIcon": .bool(backToBundle)])
+            }
+
             // The menu bar: no items a browser doesn't need, and the shortcuts moved into submenus
             // still work (⌘1 goes to the first tab).
             func items(_ menu: NSMenu) -> [NSMenuItem] { menu.items.flatMap { [$0] + ($0.submenu.map(items) ?? []) } }
