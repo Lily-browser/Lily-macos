@@ -41,6 +41,11 @@ final class ExtensionLibrary {
     private(set) var installed: [InstalledExtension] = []
     private(set) var ready: [Entry] = []
     private(set) var lastError: String?
+
+    /// The pinned copy failed its hash check when loading.
+    func reportIntegrityFailure() {
+        lastError = "An extension's files changed after it was added, so it wasn't loaded. Remove it and add it again."
+    }
     /// What a Chrome Web Store install is doing ("Downloading…"), nil when none is running.
     private(set) var storeStatus: String?
     /// The runtime listens here to load and unload extensions.

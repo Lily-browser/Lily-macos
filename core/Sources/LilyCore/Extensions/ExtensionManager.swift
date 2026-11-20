@@ -50,6 +50,14 @@ final class ExtensionManager: NSObject, WKWebExtensionControllerDelegate {
 
     private func load(_ entry: ExtensionLibrary.Entry) async {
         guard contexts[entry.id] == nil, let record = library.installed.first(where: { $0.id == entry.id }) else { return }
+        // WebKit reads the pinned folder from disk, so check it is still exactly what was approved right
+        // before handing it over (the check in `prepare` can be a while earlier). A write in the moments
+        // between this check and WebKit's reads needs same-user access to Lily's container.
+        guard let expected = record.contentHash, await ExtensionLoader.verifiedPackage(at: entry.folder, expectedHash: expected) != nil else {
+            Log.extensions.error("Pinned extension \(entry.id, privacy: .private) failed its integrity check at load")
+            library.reportIntegrityFailure()
+            return
+        }
         do {
             let context = WKWebExtensionContext(for: try await WKWebExtension(resourceBaseURL: entry.folder))
             guard contexts[entry.id] == nil, library.entry(entry.id) != nil else { return }
