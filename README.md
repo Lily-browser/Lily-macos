@@ -1,5 +1,7 @@
 # Lily
 
+**A native, private-by-default macOS browser with vertical tabs and spaces. Free, open source, no account, no telemetry.**
+
 A native macOS browser in the spirit of Arc: vertical tabs in a sidebar, spaces with separate logins, split view, a command palette, and a local AI assistant that can summarize the page or YouTube video you're on and explain selected text.
 
 Lily is written in Swift with AppKit and SwiftUI and renders pages with WebKit (`WKWebView`), the engine Safari uses. There is no Electron, no bundled Chromium and no Node; the only JavaScript is the set of scripts in `injections/` that run inside web pages. The assistant talks to [Ollama](https://ollama.com) on your Mac.
@@ -9,6 +11,15 @@ Lily is written in Swift with AppKit and SwiftUI and renders pages with WebKit (
 > **Status:** early development (0.x). Everything listed under [Features](#features) is implemented and covered by tests or the self-test; [Known issues and limitations](#known-issues-and-limitations) lists what isn't finished, what is deliberately not supported, and what still needs a human to try.
 
 **Contents:** [Install](#install) · [Features](#features) · [Keyboard shortcuts](#keyboard-shortcuts) · [Privacy](#privacy) · [Security](#security) · [Architecture](#architecture) · [Where things are](#where-things-are) · [Development](#development) · [Adding a feature](#adding-a-feature) · [Known issues and limitations](#known-issues-and-limitations) · [Releases](#releases) · [License](#license)
+
+## Who it's for
+
+- **Arc users who want it to stay alive.** Vertical tabs, spaces with separate logins, split view, a command bar and Little Lily-style link windows, and it imports your Arc spaces and tabs.
+- **People who want a browser that doesn't watch them.** No account, no sync server, no analytics. History, bookmarks, sessions and typed text are encrypted at rest, and trackers and tracking parameters are blocked by default. See [Privacy](#privacy).
+- **People with many tabs on a laptop.** It's WebKit, like Safari: background tabs sleep, idle CPU is near zero, and thousands of tabs cost about a kilobyte each. See [Benchmarks](#benchmarks).
+- **Anyone who wants local AI.** The assistant runs on your Mac through Ollama; page text never goes to a cloud service.
+
+**Not for you if** you need cross-device sync, Chrome-only sites that break in WebKit, or a notarized, auto-updating app (builds are self-signed for now and don't update themselves).
 
 ## Install
 
