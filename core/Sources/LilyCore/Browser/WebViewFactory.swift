@@ -29,6 +29,11 @@ public final class WebViewFactory {
     /// WebKit, would make Lily users stand out to fingerprinting.
     public var applicationNameForUserAgent = WebViewFactory.safariApplicationName()
 
+    /// The user agent Lily's own requests send (search suggestions): Safari's, like the pages.
+    nonisolated static func safariUserAgent() -> String {
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) " + safariApplicationName()
+    }
+
     /// "Version/<installed Safari> Safari/605.1.15", as Safari itself sends. Falls back to the
     /// Safari that ships with this macOS when Safari's bundle can't be read.
     nonisolated static func safariApplicationName(safariInfo: URL = URL(fileURLWithPath: "/Applications/Safari.app/Contents/Info.plist"),

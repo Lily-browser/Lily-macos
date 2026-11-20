@@ -27,6 +27,8 @@ Lily is written in Swift with AppKit and SwiftUI and renders pages with WebKit (
 2. Open it and drag **Lily** to **Applications**.
 3. Builds without a Developer ID signature are blocked on first launch: open **System Settings → Privacy & Security** and click **Open Anyway**.
 
+> **Download the DMG with Safari or `curl`, not with Lily itself.** Lily is sandboxed, and macOS marks files a sandboxed app downloads as unopenable ("The application can't be opened", with no Open Anyway button). If that already happened, run `xattr -dr com.apple.quarantine /Applications/Lily.app`.
+
 **Requirements**
 - macOS 14 Sonoma or later, Apple silicon or Intel. Full web extension support (popups, background) needs macOS 15.4 or later.
 - For the assistant only: [Ollama](https://ollama.com) with at least one model (`ollama pull llama3.2`).
@@ -138,6 +140,18 @@ The assistant sends page text to Ollama over HTTP on this Mac. While Ollama isn'
 **Signing note:** ad-hoc builds store the encryption key per build, so the saved session doesn't survive an update; Developer ID builds keep it.
 
 ## Architecture
+
+### Repositories and layering
+
+Lily is three repositories in the [Lily-browser](https://github.com/Lily-browser) organization:
+
+```
+Lily-macos  (this repo)   AppKit/SwiftUI shell, WebKit extension runtime, signing, DMG
+Lily-ios                  SwiftUI shell for iPhone/iPad (planned)
+        └──── both depend on ────▶  LilyKit   platform-neutral Swift package (macOS 14+, iOS 18+)
+```
+
+LilyKit holds what has no UI: ad-block rule conversion, sealed storage and the Keychain key store, history/bookmarks/site settings, page IPC schemas and routing, migration readers, the assistant client, extension manifest/package/audit logic and URL/privacy helpers. It never imports AppKit, UIKit or SwiftUI; platform differences inside it are `#if os(macOS)` fences. `LilyCore` re-exports it (`App/Exports.swift`), so the shell's code reads as one module. Apps pin LilyKit by revision or exact tag (`scripts/security-lint.sh` enforces pinning), so a kit change reaches an app only through a reviewed version bump here. The same security lint runs in LilyKit's CI.
 
 ### The big picture
 
@@ -265,7 +279,7 @@ Install, audit, pinning and verification work on every macOS version (`Extension
 ## Where things are
 
 ```
-core/                     Swift package (Package.swift: Swift 6 mode, no dependencies)
+core/                     Swift package (Package.swift: Swift 6 mode; one dependency, LilyKit, pinned)
   Sources/Lily/       main.swift: the executable's entry point
   Sources/LilyCore/   the app (library target, so tests can reach it)
   Tests/LilyCoreTests/  Swift Testing suites
@@ -278,22 +292,24 @@ CLAUDE.md                 engineering rules (architecture, security, performance
 CONTRIBUTING.md           branches, PRs, stacked PRs, releases
 ```
 
-**`core/Sources/LilyCore/`**
+**`core/Sources/LilyCore/` and the shared `LilyKit`**
 
-| Folder | Files | Responsibility |
-|---|---|---|
-| `App/` | `AppDelegate`, `MainMenu`, `SettingsWindowController`, `DefaultBrowser`, `SelfTest` | Startup, app-wide services, menus, Settings panes, default-browser registration, the self-test |
-| `Browser/` | `BrowserWindowController` (+`Commands`), `Tab`, `TabStore`, `WebViewFactory`, `BrowserWebView`, `SplitView`, `TabSleeper`, `PaneFreezer`, `FindInPage`, `WebInspector`, `LittleLily`, `HTTPSFirst`, `URLResolver`, `DownloadManager`, `WindowToolbar`, `ExtensionSupport` | Windows, tabs and their web views, menus and shortcuts, split panes, sleeping and pausing, find, navigation policy, downloads, the toolbar, extension host protocols |
-| `UI/` | `SidebarView`, `PinnedTabsGrid`, `TabMenu`, `WindowModel`, `CommandBarView`, `CommandBarTextField`, `CommandPalette`, `TabDragDrop`, `HistoryView`, `HistoryPanelView`, `AssistantPanelView`, `AssistantChat`, `SiteSettingsView`, `SiteSecurityView`, `DownloadsView`, `ExtensionToolbarView`, `ExtensionsSettingsView`, `MigrationView`, `Appearance`, `Customization`, `FaviconView`, `FullscreenNotice` | Window chrome: the SwiftUI sidebar with a native AppKit pinned-tile grid, the shared tab menu (SwiftUI and NSMenu), spaces, drag and drop, command bar and palette, toasts and haptics, panels and popovers |
-| `IPC/` | `IPCEnvelope`, `IPCRouter`, `ScriptMessageBridge` | The page ↔ native wire format, routing and source checks |
-| `Handlers/` | `PageHandlers`, `PagePayloads`, `PageContext` | Page routes, their schemas and limits, page context for the assistant |
-| `Scripts/` | `ScriptRegistry`, `InjectionManifest` | Loading and validating `injections/manifest.json` into `WKUserScript`s |
-| `Extensions/` | `ExtensionLibrary`, `ExtensionManager`, `ExtensionManifest`, `ExtensionPackage`, `ExtensionAudit`, `ExtensionActor`, `ExtensionCompat`, `ChromeWebStore`, `CRX3`, `ExtensionScriptInjector`, `ExtensionMessageBridge`, `ExtensionStorage`, `NativeMessagingHostManager` | Installing, verifying and running web extensions |
-| `AdBlock/` | `AdBlocker`, `FilterListConverter`, `FilterLists`, `BuiltinBlocklist`, `CosmeticSelector` | Content-rule compilation, filter-list download and conversion, procedural filters |
-| `Agent/` | `Assistant`, `OllamaClient`, `Prompts`, `AssistantModels`, `AssistantContextStore` | The local assistant |
-| `Migration/` | `MigrationEngine`, `MigrationModel`, `MigrationModels`, `BrowserReaders`, `SQLiteReader`, `MigrationAccess` | Importing from Chrome, Safari, Arc, Dia and Zen |
-| `Session/` | `FormDrafts` | Typed-text recovery |
-| `Support/` | `SecureStorage`, `SessionStore`, `History`, `Bookmarks`, `AddressCompletion`, `SearchSuggestions`, `SiteSettings`, `LinkTracking`, `Preferences`, `AppPaths`, `CodeIntegrity`, `CertificatePinning`, `Clipboard`, `Sanitize`, `JSONValue`, `Log` | Encryption and storage, settings, address completion and search suggestions, paths, integrity, pinning, sanitizing, logging |
+Files that need neither AppKit nor SwiftUI live in LilyKit, a separate package that the iOS app uses too; this repo depends on it at a pinned version.
+
+| Folder | `LilyCore` (this repo) | [`LilyKit`](https://github.com/Lily-browser/LilyKit) (shared) | Responsibility |
+|---|---|---|---|
+| `App/` | `AppDelegate`, `DefaultBrowser`, `Exports`, `MainMenu`, `SelfTest`, `SettingsWindowController` | — | Startup, app-wide services, menus, Settings panes, default-browser registration, the self-test |
+| `Browser/` | `BrowserWebView`, `BrowserWindowController`, `BrowserWindowController+Commands`, `DownloadManager`, `ExtensionSupport`, `FindInPage`, `LittleLily`, `PaneFreezer`, `SplitView`, `Tab`, `TabMemory`, `TabSleeper`, `TabStore`, `WebViewFactory`, `WindowToolbar` | `HTTPSFirst`, `URLResolver`, `WebInspector` | Windows, tabs and their web views, menus and shortcuts, split panes, sleeping and pausing, find, navigation policy, downloads, the toolbar, extension host protocols |
+| `UI/` | `Appearance`, `AssistantChat`, `AssistantPanelView`, `CommandBarTextField`, `CommandBarView`, `CommandPalette`, `Customization`, `DownloadsView`, `ExtensionToolbarView`, `ExtensionsSettingsView`, `FaviconView`, `FullscreenNotice`, `HistoryPanelView`, `HistoryView`, `MigrationView`, `PinnedTabsGrid`, `SidebarView`, `SiteSecurityView`, `SiteSettingsView`, `TabDragDrop`, `TabMenu`, `WindowModel` | — | Window chrome: the SwiftUI sidebar with a native AppKit pinned-tile grid, the shared tab menu (SwiftUI and NSMenu), spaces, drag and drop, command bar and palette, toasts and haptics, panels and popovers |
+| `IPC/` | — | `IPCEnvelope`, `IPCRouter`, `ScriptMessageBridge` | The page ↔ native wire format, routing and source checks |
+| `Handlers/` | `PageContext`, `PageHandlers` | `PagePayloads` | Page routes, their schemas and limits, page context for the assistant |
+| `Scripts/` | — | `InjectionManifest`, `ScriptRegistry` | Loading and validating `injections/manifest.json` into `WKUserScript`s |
+| `Extensions/` | `ExtensionLibrary`, `ExtensionManager`, `ExtensionMessageBridge`, `ExtensionNotifications`, `ExtensionScriptInjector`, `ExtensionWebSockets` | `CRX3`, `ChromeWebStore`, `ExtensionActor`, `ExtensionAudit`, `ExtensionCompat`, `ExtensionConsole`, `ExtensionManifest`, `ExtensionPackage`, `ExtensionStorage`, `NativeMessagingHostManager` | Installing, verifying and running web extensions |
+| `AdBlock/` | — | `AdBlocker`, `BuiltinBlocklist`, `CosmeticSelector`, `FilterListConverter`, `FilterLists` | Content-rule compilation, filter-list download and conversion, procedural filters |
+| `Agent/` | — | `Assistant`, `AssistantContextStore`, `AssistantModels`, `OllamaClient`, `Prompts` | The local assistant |
+| `Migration/` | `MigrationAccess`, `MigrationModel` | `BrowserReaders`, `MigrationEngine`, `MigrationModels`, `SQLiteReader` | Importing from Chrome, Safari, Arc, Dia and Zen |
+| `Session/` | — | `FormDrafts` | Typed-text recovery |
+| `Support/` | `Clipboard`, `CodeIntegrity`, `SessionStore` | `AddressCompletion`, `AppPaths`, `Bookmarks`, `CertificatePinning`, `History`, `JSONValue`, `LinkTracking`, `Log`, `Preferences`, `Sanitize`, `SearchSuggestions`, `SecureStorage`, `SiteSettings`, `WebOrigin` | Encryption and storage, settings, address completion and search suggestions, paths, integrity, pinning, sanitizing, logging |
 
 ## Benchmarks
 
@@ -329,6 +345,8 @@ make dmg        # build/Lily-<version>.dmg
 make hooks      # run the security lint before every commit in this clone
 ```
 
+**LilyKit.** SwiftPM fetches it on the first build (network needed). To change it: open a PR in [LilyKit](https://github.com/Lily-browser/LilyKit), merge and tag it, then bump the pin in `core/Package.swift` here in the same PR that needs it. For local experiments you can temporarily point the dependency at a checkout with `.package(path:)`, but the lint rejects that, so don't commit it.
+
 `make app` options: `UNIVERSAL=1` builds arm64 + x86_64, `VERSION` / `BUILD_NUMBER` override the version, and `CODESIGN_IDENTITY` signs with a certificate (ad-hoc otherwise).
 
 **CI** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs `make check`, `make app` (with `verify-app.sh`) and the packaged app's `--self-test` on every PR.
@@ -337,7 +355,7 @@ make hooks      # run the security lint before every commit in this clone
 
 **The self-test** (`Lily --self-test`, also run on the packaged app in CI) boots the real app and checks, in WebKit: the injection runtime and its host guard, page events and history, `dom.extract`, procedural filters, the download animation, typed-text recovery (draft kept, card field and query string not, restore offered and applied), Link Scrolling (a 12,000 px pane follows a 6,000 px one to the same fraction), paused panes (animation frames stop), Little Lily (Open in Lily keeps the same page, typed text and scroll position, and its messages reach the main window), find in page, tab drag and drop, the native pinned tiles (rendered, AppKit drag pasteboard, drop lands in the gap), web developer features matching the setting, the trimmed menu bar, the command palette against the live menus, internal pages without scripts, migration inside the sandbox, page-world isolation, the assistant, and encrypted session storage. `LILY_SELFTEST_NETWORK=1` adds live checks of HTTPS-First and certificate pinning. It prints a JSON report and exits non-zero on failure.
 
-**Tests** (`core/Tests/LilyCoreTests/`, Swift Testing, about 220 tests) cover each area by file name: the command bar's completion and suggestions (`CommandBarSuggestionsTests`), tabs and spaces (`SpacesTests`, `WorkspaceTests`, `SplitViewTests`, `ScrollLinkTests`, `TabSleepTests`, `PaneFreezerTests`, `TabManagerPerformanceTests`), IPC and payloads (`CoreTests`, `InjectionAuditTests`), storage and privacy (`HistoryTests`, `FormDraftsTests`, `SiteSettingsTests`, `ThreatHardeningTests`, `SecurityReviewTests`, `SecurityStandardsTests`), extensions (`ExtensionTests`, `ExtensionPackageTests`, `ExtensionRuntimeTests`, `ExtensionCompatTests`, `ChromeWebStoreTests`), the command palette, ad blocking, migration, downloads, the link menu, platform controls and the assistant.
+**Tests** (`core/Tests/LilyCoreTests/`, Swift Testing, about 290 tests; the 47 tests of the shared code run in LilyKit) cover each area by file name: the command bar's completion and suggestions (`CommandBarSuggestionsTests`), tabs and spaces (`SpacesTests`, `WorkspaceTests`, `SplitViewTests`, `ScrollLinkTests`, `TabSleepTests`, `PaneFreezerTests`, `TabManagerPerformanceTests`), IPC and payloads (`CoreTests`, `InjectionAuditTests`), storage and privacy (`HistoryTests`, `FormDraftsTests`, `SiteSettingsTests`, `ThreatHardeningTests`, `SecurityReviewTests`, `SecurityStandardsTests`), extensions (`ExtensionTests`, `ExtensionPackageTests`, `ExtensionRuntimeTests`, `ExtensionCompatTests`, `ChromeWebStoreTests`), the command palette, ad blocking, migration, downloads, the link menu, platform controls and the assistant.
 
 How to branch, open and merge pull requests (including stacked PRs), and cut releases is in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
@@ -346,13 +364,14 @@ How to branch, open and merge pull requests (including stacked PRs), and cut rel
 A checklist that matches how the existing features are built:
 
 1. **Branch** from an up-to-date `main` (`feature/…`, `fix/…`); conventional, atomic commits that each build.
-2. **Page behavior?** Add `injections/modules/<name>.js`: an IIFE that exits if `window.__lily` is missing or it already ran; talk to native code only through `lily.send` / `lily.emit` / `lily.register`; react to events (debounce with `setTimeout` taking a function), never poll; treat anything native sends as data. Add it to `injections/manifest.json` with the narrowest `matches` and frames it needs.
-3. **New route?** Add a `Decodable` payload with limits to `PagePayloads.swift`, register it with `router.on(…, as:)` in `PageHandlers.swift`, take the origin from `ctx.source`, and check URLs with `PagePayload.sameOrigin`.
-4. **Storing user data?** Use a `SealedFile` with its own key name and purpose, keep nothing in private windows, add it to *Clear Browsing Data*, and bound its size and age.
-5. **Background work?** Schedule one wake-up with tolerance (see `TabSleeper`, `PaneFreezer`); do file I/O on an actor, not the main thread.
-6. **Menu command?** Add it to `MainMenu.swift` with an action on `BrowserWindowController` and validate it in `validateMenuItem`; it appears in the command palette automatically.
-7. **Tests**: unit tests for the logic and payloads, and a self-test check when it needs WebKit. Touching `Tab`, `TabStore` or the sidebar: run `make perf`.
-8. **Before the PR**: `make check`, `make selftest`, `make app`. Describe the security impact in the PR template. Update this README.
+2. **Logic with no UI that iOS will want too?** It belongs in LilyKit, not here (see Architecture).
+3. **Page behavior?** Add `injections/modules/<name>.js`: an IIFE that exits if `window.__lily` is missing or it already ran; talk to native code only through `lily.send` / `lily.emit` / `lily.register`; react to events (debounce with `setTimeout` taking a function), never poll; treat anything native sends as data. Add it to `injections/manifest.json` with the narrowest `matches` and frames it needs.
+4. **New route?** Add a `Decodable` payload with limits to `PagePayloads.swift` (in LilyKit), register it with `router.on(…, as:)` in `PageHandlers.swift`, take the origin from `ctx.source`, and check URLs with `PagePayload.sameOrigin`.
+5. **Storing user data?** Use a `SealedFile` with its own key name and purpose, keep nothing in private windows, add it to *Clear Browsing Data*, and bound its size and age.
+6. **Background work?** Schedule one wake-up with tolerance (see `TabSleeper`, `PaneFreezer`); do file I/O on an actor, not the main thread.
+7. **Menu command?** Add it to `MainMenu.swift` with an action on `BrowserWindowController` and validate it in `validateMenuItem`; it appears in the command palette automatically.
+8. **Tests**: unit tests for the logic and payloads, and a self-test check when it needs WebKit. Touching `Tab`, `TabStore` or the sidebar: run `make perf`.
+9. **Before the PR**: `make check`, `make selftest`, `make app`. Describe the security impact in the PR template. Update this README.
 
 ## Known issues and limitations
 

@@ -175,7 +175,7 @@ final class CommandBarModel: Identifiable {
             engineResults = (q, hit)
             return
         }
-        let fetcher: any SearchSuggestionFetching = suggestionFetcher ?? SearchSuggestionClient()
+        let fetcher: any SearchSuggestionFetching = suggestionFetcher ?? SearchSuggestionClient(userAgent: WebViewFactory.safariUserAgent())
         suggestionFetcher = fetcher
         let delay = suggestionDelay
         engineTask = Task { [weak self] in

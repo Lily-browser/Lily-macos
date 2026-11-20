@@ -8,9 +8,13 @@ let package = Package(
         .executable(name: "Lily", targets: ["Lily"]),
         .library(name: "LilyCore", targets: ["LilyCore"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/Lily-browser/LilyKit.git", revision: "e00a27ecb28dab4d5567a0b3648d0f425ddfbde9"),
+    ],
     targets: [
         .target(
             name: "LilyCore",
+            dependencies: [.product(name: "LilyKit", package: "LilyKit")],
             linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("WebKit")]
         ),
         .executableTarget(name: "Lily", dependencies: ["LilyCore"]),

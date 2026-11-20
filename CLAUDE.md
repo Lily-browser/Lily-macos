@@ -1,6 +1,6 @@
 # Lily — Claude Rules
 
-Native macOS browser. Pure Swift + SwiftUI (AppKit/WebKit only where unavoidable). Modules: `core/`, `injections/`, `agent-bridge/`, `ui/`. No Electron/web wrappers. Priorities: user delight, low CPU/RAM/energy (zero idle wake-ups), small binary.
+Native macOS browser. Pure Swift + SwiftUI (AppKit/WebKit only where unavoidable). Modules: `core/`, `injections/`, `agent-bridge/`, `ui/`. Part of the Lily-browser org: this repo is the macOS shell; platform-neutral code lives in **LilyKit** (separate repo, shared with Lily-ios). No Electron/web wrappers. Priorities: user delight, low CPU/RAM/energy (zero idle wake-ups), small binary.
 
 ## Token discipline (user is token-constrained)
 - Work inline. Spawn **at most one** `builder` per task, and only for large multi-file work. Don't spawn `qa-tester`/`sec-auditor` by default: run the gates yourself. Use `sec-auditor` only for new network/IPC/storage/entitlement surface, or when asked.
@@ -8,6 +8,12 @@ Native macOS browser. Pure Swift + SwiftUI (AppKit/WebKit only where unavoidable
 - No optional extras, no unrequested refactors. Reports: a few lines, no change log restating the diff.
 - Act on established facts; don't re-ask decisions the user already made.
 - Context hygiene: after a PR is opened, or once a session gets long, end the reply with a one-line reminder: "`/compact` now (or `/clear` before an unrelated task)". Claude can't run these itself.
+
+## Repos and LilyKit
+- Code with no AppKit/SwiftUI that iOS could also use goes in `Lily-browser/LilyKit`, never here. Don't add iOS code to this repo.
+- LilyKit is pinned in `core/Package.swift` (`exact:` tag, or `revision:` until a release exists). Change flow: PR in LilyKit → merge → tag → bump the pin here in the PR that needs it. Never commit `.package(path:)` (the lint rejects it).
+- The kit's declarations are `public`; new kit API needs `public` (and a `public init` for structs). `LilyCore` re-exports the kit, so shell code uses its types unqualified.
+- Kit tests run in the kit's CI; this repo's `swift test` covers only the shell. The kit's own `scripts/security-lint.sh` enforces the same code rules there.
 
 ## Code rules (most are enforced by `make lint` → `scripts/security-lint.sh`, which the pre-commit hook runs)
 - Concurrency: `async/await`, `actor`, `@MainActor` only; `SWIFT_STRICT_CONCURRENCY = complete`.

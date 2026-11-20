@@ -2,6 +2,10 @@
 
 Lily is licensed under the [GPL-3.0](LICENSE). By opening a pull request you agree that your contribution is licensed under it too. Questions go to [Discussions](https://github.com/Lily-browser/Lily-macos/discussions), bugs and feature requests to issues, vulnerabilities to [SECURITY.md](SECURITY.md).
 
+## Repositories
+
+Lily is three repositories in the [Lily-browser](https://github.com/Lily-browser) organization: **Lily-macos** (this one), **Lily-ios**, and **LilyKit**, the platform-neutral package both apps use. Code that doesn't need AppKit or SwiftUI belongs in LilyKit. A change that spans repos is a PR in LilyKit first (merged and tagged), then a PR here that bumps the pinned version in `core/Package.swift` together with the code that uses it.
+
 ## Branches
 
 | Branch | Purpose | Receives changes from | Who merges |

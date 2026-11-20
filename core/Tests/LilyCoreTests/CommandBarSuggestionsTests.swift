@@ -233,7 +233,7 @@ import Testing
     }
 
     @Test func suggestionSessionKeepsNoState() {
-        let config = SearchSuggestionClient.configuration
+        let config = SearchSuggestionClient.configuration(userAgent: "Mozilla/5.0 TestAgent")
         #expect(config.httpCookieStorage == nil && config.urlCache == nil && config.urlCredentialStorage == nil)
         #expect(!config.httpShouldSetCookies && config.httpCookieAcceptPolicy == .never)
         #expect(config.timeoutIntervalForRequest <= 2 && config.timeoutIntervalForResource <= 2)
@@ -467,9 +467,9 @@ final class SuggestionStub: URLProtocol, @unchecked Sendable {
             box.reply = reply
             box.requests = []
         }
-        let config = SearchSuggestionClient.configuration
+        let config = SearchSuggestionClient.configuration(userAgent: "Mozilla/5.0 TestAgent")
         config.protocolClasses = [SuggestionStub.self]
-        return SearchSuggestionClient(configuration: config)
+        return SearchSuggestionClient(userAgent: "Mozilla/5.0 TestAgent", configuration: config)
     }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
