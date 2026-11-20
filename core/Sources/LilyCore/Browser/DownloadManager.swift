@@ -92,7 +92,12 @@ public final class DownloadManager: NSObject, WKDownloadDelegate {
     public func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
         guard let id = finish(download) else { return }
         let cancelled = (error as? URLError)?.code == .cancelled
-        if let resumeData { self.resumeData[id] = resumeData }
+        let isPrivate = items.first(where: { $0.id == id })?.isPrivate == true
+        // Resume data holds the source address, so a private download keeps none; Retry starts over.
+        if let resumeData, !isPrivate { self.resumeData[id] = resumeData }
+        if isPrivate, let file = items.first(where: { $0.id == id })?.destination, FileManager.default.fileExists(atPath: file.path) {
+            Self.scrubOrigin(file)
+        }
         update(id) { $0.state = cancelled ? .cancelled : .failed(Sanitize.errorMessage(error)) }
         Log.web.error("Download failed: \(error.localizedDescription, privacy: .private)")
     }
@@ -101,7 +106,10 @@ public final class DownloadManager: NSObject, WKDownloadDelegate {
 
     public func cancel(_ id: UUID) {
         downloads[id]?.cancel { [weak self] data in
-            Task { @MainActor in if let data { self?.resumeData[id] = data } }
+            Task { @MainActor in
+                guard let self, let data, self.items.first(where: { $0.id == id })?.isPrivate != true else { return }
+                self.resumeData[id] = data
+            }
         }
     }
 
