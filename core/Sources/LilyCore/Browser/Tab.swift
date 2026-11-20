@@ -79,6 +79,10 @@ public final class Tab: NSObject {
     private var allowedFileURL: URL?
     /// The next navigation is Lily's own page (an error page), which runs without page JavaScript.
     private var internalPagePending = false
+    private var committingInternalPage = false
+    /// True while the page shown is Lily's own error page, whose address is the one that failed; the
+    /// lock must not claim a secure connection for it.
+    private(set) var showsErrorPage = false
     private var isDiscarded = false
     let siteSettings: SiteSettings?
     let adBlocker: AdBlocker?
@@ -430,6 +434,7 @@ extension Tab: WKNavigationDelegate {
         let isMainFrame = navigationAction.targetFrame?.isMainFrame ?? true
         if internalPagePending, isMainFrame, navigationAction.navigationType == .other {
             internalPagePending = false
+            committingInternalPage = true
             preferences.allowsContentJavaScript = false // our own pages need no page scripts
             return (.allow, preferences)
         }
@@ -634,6 +639,8 @@ extension Tab: WKNavigationDelegate {
         // must not inherit it as assistant context. The new document reports its own.
         lastSelection = nil
         upgradedFrom = nil
+        showsErrorPage = committingInternalPage
+        committingInternalPage = false
         downloadsThisPage = 0
         moreDownloadsAllowed = false
         dialogCount = 0

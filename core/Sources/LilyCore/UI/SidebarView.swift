@@ -148,13 +148,14 @@ private struct AddressPill: View {
 
     private func lockSymbol(_ url: URL?) -> String {
         guard let url else { return "magnifyingglass" }
+        if window.controller?.tabs.active?.showsErrorPage == true { return "exclamationmark.triangle" }
         if url.scheme == "https" { return window.controller?.tabs.active?.webView.hasOnlySecureContent == false ? "lock.trianglebadge.exclamationmark" : "lock.fill" }
         return url.isFileURL ? "doc" : "exclamationmark.triangle"
     }
 
     private func showSecurity() {
         guard let web = window.controller?.tabs.active?.webView, let url = web.url else { return }
-        security = IdentifiedSecurity(value: SiteSecurity(webView: web, url: url))
+        security = IdentifiedSecurity(value: SiteSecurity(webView: web, url: url, isErrorPage: window.controller?.tabs.active?.showsErrorPage == true))
     }
 
     private func display(_ url: URL?) -> String {

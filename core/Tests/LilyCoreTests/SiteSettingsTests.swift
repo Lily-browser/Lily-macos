@@ -1,4 +1,5 @@
 import Foundation
+import WebKit
 import SwiftUI
 import Testing
 @testable import LilyCore
@@ -92,5 +93,14 @@ import Testing
         #expect(SiteSecurityView.recordMatches("cdn.example.com", host: "example.com"))
         #expect(!SiteSecurityView.recordMatches("notexample.com", host: "example.com"))
         #expect(!SiteSecurityView.recordMatches("example.org", host: "app.example.com"))
+    }
+}
+
+@Suite @MainActor struct SiteSecurityErrorPageTests {
+    @Test func anErrorPageAtAnHTTPSAddressIsNotReportedSecure() {
+        let web = WKWebView(frame: .zero)
+        let url = URL(string: "https://example.com/")!
+        #expect(SiteSecurity(webView: web, url: url, isErrorPage: true).level == .notLoaded)
+        #expect(SiteSecurity(webView: web, url: url).level != .notLoaded)
     }
 }
