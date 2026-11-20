@@ -31,6 +31,10 @@ enum HTTPSFirst {
 
     nonisolated static func isLoopback(_ host: String) -> Bool {
         let host = host.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
-        return host == "localhost" || host == "::1" || host.hasPrefix("127.")
+        if host == "localhost" || host == "::1" { return true }
+        // Only a four-octet IPv4 literal in 127.0.0.0/8; "127.evil.example" is a DNS name.
+        let octets = host.split(separator: ".", omittingEmptySubsequences: false)
+        guard octets.count == 4, octets.allSatisfy({ !$0.isEmpty && $0.allSatisfy(\.isASCII) && $0.allSatisfy(\.isNumber) && UInt8($0) != nil }) else { return false }
+        return octets[0] == "127"
     }
 }

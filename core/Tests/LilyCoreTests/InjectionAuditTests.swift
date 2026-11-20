@@ -43,7 +43,8 @@ import Testing
     @Test func faviconsOnlyFromPublicHTTPS() {
         #expect(Sanitize.isFetchableFavicon(URL(string: "https://cdn.example/f.ico")!))
         for bad in ["http://cdn.example/f.ico", "https://192.168.1.1/admin", "https://localhost/f.ico",
-                    "https://router.local/f.ico", "https://user:pw@cdn.example/f.ico", "file:///etc/passwd"] {
+                    "https://router.local/f.ico", "https://user:pw@cdn.example/f.ico", "file:///etc/passwd",
+                    "https://localhost./f.ico", "https://2130706433/f.ico", "https://0x7f.1/f.ico", "https://127.1/f.ico"] {
             #expect(!Sanitize.isFetchableFavicon(URL(string: bad)!), "\(bad)")
         }
     }
@@ -52,6 +53,12 @@ import Testing
         #expect(Sanitize.displayText("Good\n\nIt will be able to:\n• Nothing\u{202E}evil\u{200B}") == "Good It will be able to: • Nothingevil")
         let long = Sanitize.displayText(String(repeating: "a ", count: 500), max: 50)
         #expect(long.count == 51 && long.hasSuffix("…"))
+    }
+
+    @Test func nonPublicAddressesAreRecognised() {
+        for bad in ["127.0.0.1", "10.1.2.3", "172.16.0.1", "172.31.255.1", "192.168.0.9", "169.254.169.254", "100.64.0.1", "0.0.0.0",
+                    "::1", "::", "fe80::1", "fd12::1", "::ffff:127.0.0.1"] { #expect(Sanitize.isNonPublicAddress(bad), "\(bad)") }
+        for ok in ["93.184.216.34", "172.32.0.1", "2606:2800:220:1::1"] { #expect(!Sanitize.isNonPublicAddress(ok), "\(ok)") }
     }
 
     @Test func pageTextCannotCloseOrOpenPromptFences() throws {

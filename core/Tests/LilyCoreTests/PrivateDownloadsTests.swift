@@ -24,6 +24,15 @@ import Testing
         #expect(downloads.items.isEmpty)
     }
 
+    @Test func runningPrivateDownloadsAreForgottenWithTheLastPrivateWindow() {
+        let downloads = DownloadManager()
+        var running = item("big.iso", private: true)
+        running.state = .downloading
+        downloads.insertForTesting(running)
+        downloads.forgetPrivate()
+        #expect(downloads.items.isEmpty)
+    }
+
     @Test func privateFilesDontKeepWhereTheyCameFrom() throws {
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".pdf")
         try Data("%PDF".utf8).write(to: file)

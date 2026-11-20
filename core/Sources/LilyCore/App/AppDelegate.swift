@@ -248,7 +248,32 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
 
     public func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
 
+    /// Edit → Copy / Cut run the normal responder-chain action, then, for a page in a private window,
+    /// mark the pasteboard Concealed/Transient so clipboard managers skip it. (WebKit's own context-menu
+    /// Copy doesn't pass through here.) The marking follows WebKit's asynchronous write, so it waits for
+    /// the pasteboard to change, for at most a second.
+    @objc func copyFromPage(_ sender: Any?) { sendEdit(#selector(NSText.copy(_:)), sender) }
+    @objc func cutFromPage(_ sender: Any?) { sendEdit(#selector(NSText.cut(_:)), sender) }
+
+    private func sendEdit(_ action: Selector, _ sender: Any?) {
+        let board = NSPasteboard.general
+        let before = board.changeCount
+        let responder = NSApp.keyWindow?.firstResponder as? NSView
+        let fromPrivatePage = (NSApp.keyWindow?.windowController as? BrowserWindowController)?.isPrivate == true
+            && responder.map { view in sequence(first: view, next: \.superview).contains { $0 is BrowserWebView } } == true
+        NSApp.sendAction(action, to: nil, from: sender)
+        guard fromPrivatePage else { return }
+        Task { @MainActor in
+            for _ in 0..<50 {
+                if board.changeCount != before { Clipboard.conceal(board); return }
+                try? await Task.sleep(for: .milliseconds(20))
+            }
+        }
+    }
+
     public func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(copyFromPage(_:)) { return NSApp.target(forAction: #selector(NSText.copy(_:)), to: nil, from: item) != nil }
+        if item.action == #selector(cutFromPage(_:)) { return NSApp.target(forAction: #selector(NSText.cut(_:)), to: nil, from: item) != nil }
         guard item.action == #selector(makeDefaultBrowser(_:)) else { return true }
         return DefaultBrowser.isAvailable && !DefaultBrowser.isDefault
     }
