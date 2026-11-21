@@ -246,15 +246,14 @@ private final class PaneView: NSView {
         let web = tab.webView
         web.removeFromSuperview()
         web.isHidden = false
-        web.translatesAutoresizingMaskIntoConstraints = false
+        // Frame-based, not Auto Layout: WebKit moves the web view by its frame while a back/forward swipe slides the page
+        // (and reparents it for the animation), and a constraint that re-asserts the old frame in the middle of that, or
+        // is dropped when the view changes parent, leaves the page gray or empty afterwards.
+        web.translatesAutoresizingMaskIntoConstraints = true
+        web.autoresizingMask = [.width, .height]
+        web.frame = bounds
         addSubview(web)
         self.web = web
-        NSLayoutConstraint.activate([
-            web.leadingAnchor.constraint(equalTo: leadingAnchor),
-            web.trailingAnchor.constraint(equalTo: trailingAnchor),
-            web.topAnchor.constraint(equalTo: topAnchor),
-            web.bottomAnchor.constraint(equalTo: bottomAnchor),
-        ])
         updateBorder()
     }
 
