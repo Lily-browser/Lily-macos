@@ -3,45 +3,37 @@ import LilyKit
 
 /// Ordered tab collection for one window, divided into spaces. `tabs` holds every space's tabs;
 /// `visibleTabs` is the current space. Pinned tabs always sort before unpinned ones.
+///
+/// The rules (order, selection, spaces, closing, splits, recently closed) are LilyKit's `TabCollection`, shared
+/// with Lily-ios. This class keeps the web-view `Tab` objects in step with it and fires the window's callbacks.
 @MainActor
 public final class TabStore {
-    public struct ClosedTab: Sendable {
-        let url: URL
-        let pinned: Bool
-        let index: Int
-    }
+    public typealias ClosedTab = LilyKit.ClosedTab
+    public typealias AfterClose = LilyKit.AfterClose
 
+    private var collection = TabCollection(spaces: [Space(name: "Personal", symbol: "house.fill")])
+    /// Every live tab object by id; `tabs` is these in the collection's order.
+    private var objects: [UUID: Tab] = [:]
     public private(set) var tabs: [Tab] = [] { didSet { byID = nil } }
     /// id → tab, rebuilt lazily after the list changes; lookups happen far more often than changes.
     private var byID: [UUID: Tab]?
-    public private(set) var activeID: UUID?
-    public private(set) var recentlyClosed: [ClosedTab] = []
 
-    public func clearRecentlyClosed() { recentlyClosed.removeAll() }
+    public var activeID: UUID? { collection.activeID }
+    public var recentlyClosed: [ClosedTab] { collection.recentlyClosed }
+    public func clearRecentlyClosed() { collection.clearRecentlyClosed() }
 
     /// Every split group; a tab belongs to at most one. Each shows as one pill in the sidebar.
-    public private(set) var splits: [SplitGroup] = [] {
-        didSet { if splits != oldValue { onSplitChange?(); onChange?() } }
-    }
+    public var splits: [SplitGroup] { collection.splits }
     /// The split the active tab is in, which is the one on screen.
-    public var split: SplitGroup? { activeID.flatMap(splitGroup(containing:)) }
-
-    public func splitGroup(containing id: UUID) -> SplitGroup? { splits.first { $0.tabIDs.contains(id) } }
-
-    /// Takes a tab out of whatever split it's in (the group shrinks or ends).
-    private func leaveSplit(_ id: UUID) {
-        guard let index = splits.firstIndex(where: { $0.tabIDs.contains(id) }) else { return }
-        if let smaller = splits[index].removing(id) { splits[index] = smaller } else { splits.remove(at: index) }
-    }
+    public var split: SplitGroup? { collection.split }
+    public func splitGroup(containing id: UUID) -> SplitGroup? { collection.splitGroup(containing: id) }
     public var onSplitChange: (@MainActor () -> Void)?
 
-    public private(set) var spaces: [Space] = [Space(name: "Personal", symbol: "house.fill")]
-    public private(set) var currentSpaceID: UUID
-    /// Last active tab per space, restored when switching back.
-    private var lastActive: [UUID: UUID] = [:]
+    public var spaces: [Space] { collection.spaces }
+    public var currentSpaceID: UUID { collection.currentSpaceID }
     public var onSpaceChange: (@MainActor (_ forward: Bool) -> Void)?
 
-    public var currentSpace: Space { spaces.first { $0.id == currentSpaceID } ?? spaces[0] }
+    public var currentSpace: Space { collection.currentSpace }
     public var visibleTabs: [Tab] { tabs.filter { $0.spaceID == currentSpaceID } }
 
     public var onChange: (@MainActor () -> Void)?
@@ -54,12 +46,10 @@ public final class TabStore {
 
     private let factory: WebViewFactory
     private let router: IPCRouter
-    private let maxRecentlyClosed = 25
 
     public init(factory: WebViewFactory, router: IPCRouter) {
         self.factory = factory
         self.router = router
-        self.currentSpaceID = spaces[0].id
     }
 
     public var active: Tab? { activeID.flatMap(tab) }
@@ -69,151 +59,156 @@ public final class TabStore {
         return byID?[id]
     }
 
+    // MARK: Keeping the tab objects in step with the collection
+
+    /// What `mutate` removed from the collection; the caller decides whether to tear them down (see `takeRemoved`).
+    private var removed: [Tab] = []
+    private func takeRemoved() -> [Tab] { defer { removed = [] }; return removed }
+
+    /// Hands the web views' current address, title and activity to the collection, runs `change`, then makes `tabs`
+    /// match (making tab objects for tabs the collection added, such as blank split panes).
+    /// `sync: false` for changes that don't read those (adding, pinning, moving): with thousands of tabs it is the cost.
+    @discardableResult
+    private func mutate<T>(sync: Bool = true, inserted: UUID? = nil, _ change: (inout TabCollection) -> T) -> T {
+        if sync {
+            collection.updateEach { model in
+                guard let tab = objects[model.id] else { return }
+                model.url = tab.url; model.title = tab.title; model.lastActivated = tab.lastActivated; model.isSleeping = tab.isSleeping
+            }
+        }
+        let splitsBefore = collection.splits
+        let result = change(&collection)
+        if let inserted, let at = collection.index(of: inserted), collection.tabs.count == tabs.count + 1 {
+            // Exactly one tab was added: place it without re-matching thousands of others.
+            tabs.insert(makeTab(for: collection.tabs[at]), at: at)
+        } else {
+            rebuild()
+        }
+        if collection.splits != splitsBefore { onSplitChange?(); onChange?() }
+        return result
+    }
+
+    private func rebuild() {
+        var list: [Tab] = []
+        list.reserveCapacity(collection.tabs.count)
+        for model in collection.tabs {
+            let tab = objects[model.id] ?? makeTab(for: model)
+            if tab.spaceID != model.spaceID { tab.spaceID = model.spaceID }
+            if tab.isPinned != model.isPinned { tab.isPinned = model.isPinned }
+            list.append(tab)
+        }
+        removed = []
+        if objects.count != list.count {
+            let alive = Set(list.map(\.id))
+            removed = objects.values.filter { !alive.contains($0.id) }
+            for tab in removed { objects[tab.id] = nil }
+        }
+        tabs = list
+    }
+
+    private func makeTab(for model: TabModel) -> Tab {
+        // A file is opened by `restoreFileTab`/`openFile`, which hold its security scope before loading.
+        let url = model.url?.isFileURL == true ? nil : model.url
+        let tab = Tab(id: model.id, factory: factory, router: router, url: url, pinned: model.isPinned, space: model.spaceID,
+                      asleepWithTitle: model.isSleeping ? model.title : nil)
+        tab.delegate = tabDelegate
+        objects[model.id] = tab
+        onTabAdded?(tab)
+        return tab
+    }
+
+    /// Fires what a selection change fires: the extension APIs, the tab waking, the window.
+    private func notifyActive(from previousID: UUID?) {
+        let changed = activeID != previousID
+        if changed { onActiveTabSwitched?(active, previousID.flatMap(tab)) }
+        active?.markActivated()
+        if changed { onActiveChange?(active) }
+        onChange?()
+    }
+
+    private func spaceIndex(_ id: UUID) -> Int { spaces.firstIndex { $0.id == id } ?? 0 }
+
+    // MARK: Tabs
+
     @discardableResult
     /// `nextToActive: nil` follows Settings → Tabs ("Open new tabs next to the current tab").
     public func create(url: URL?, activate: Bool = true, pinned: Bool = false, nextToActive: Bool? = nil) -> Tab {
         let nextToActive = nextToActive ?? Preferences.opensTabsNextToCurrent
-        let tab = Tab(factory: factory, router: router, url: url, pinned: pinned, space: currentSpaceID)
-        return insert(tab, activate: activate, pinned: pinned, nextToActive: nextToActive)
+        let id = UUID()
+        let previous = activeID
+        mutate(sync: false, inserted: id) { $0.create(id: id, url: url, activate: activate, pinned: pinned, nextToActive: nextToActive) }
+        if activate || previous == nil { notifyActive(from: previous) } else { onChange?() }
+        return objects[id]!
     }
 
     /// Imported tabs: added to `space`, unloaded until first used, without switching to them.
     @discardableResult
     public func createAsleep(url: URL, title: String, pinned: Bool, in space: UUID) -> Tab {
-        let tab = Tab(factory: factory, router: router, url: url, pinned: pinned, space: space,
-                      asleepWithTitle: title.isEmpty ? (url.host ?? url.absoluteString) : title)
-        tab.delegate = tabDelegate
-        let index = pinned ? (tabs.lastIndex(where: \.isPinned).map { $0 + 1 } ?? 0) : tabs.count
-        tabs.insert(tab, at: index)
-        onTabAdded?(tab)
+        let id = UUID()
+        mutate(sync: false, inserted: id) { $0.createAsleep(id: id, url: url, title: title, pinned: pinned, in: space) }
         onChange?()
-        return tab
-    }
-
-    private func insert(_ tab: Tab, activate: Bool, pinned: Bool, nextToActive: Bool) -> Tab {
-        tab.spaceID = currentSpaceID
-        tab.delegate = tabDelegate
-        let index: Int
-        if pinned {
-            index = tabs.lastIndex(where: \.isPinned).map { $0 + 1 } ?? 0
-        } else if nextToActive, let active, let i = tabs.firstIndex(where: { $0 === active }), !active.isPinned {
-            index = i + 1
-        } else {
-            index = tabs.count
-        }
-        tabs.insert(tab, at: index)
-        onTabAdded?(tab)
-        if activate || activeID == nil { setActive(tab.id) } else { onChange?() }
-        return tab
+        return objects[id]!
     }
 
     /// Settings → Tabs → After closing a tab, show: which tab takes over when the active one closes.
-    public enum AfterClose: String, CaseIterable, Sendable {
-        /// The most recently used remaining tab in the space (Arc-like).
-        case lastUsed
-        /// The tab that was below it in the space's list (the one above when it was last).
-        case below
-        /// The tab that was above it (the one below when it was first).
-        case above
-
-        public static let `default` = AfterClose.lastUsed
-
-        public init(stored: String?) { self = stored.flatMap(AfterClose.init(rawValue:)) ?? .default }
-
-        public static var current: AfterClose { AfterClose(stored: UserDefaults.standard.string(forKey: Preferences.Key.afterClosingTab)) }
-
-        var label: String {
-            switch self {
-            case .lastUsed: return "Last used tab"
-            case .below: return "Tab below"
-            case .above: return "Tab above"
-            }
-        }
-    }
-
     /// `then: nil` follows Settings → Tabs → After closing a tab.
     public func close(_ id: UUID, then: AfterClose? = nil) {
-        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
-        // Its neighbours in its space, for "tab below/above" (read before it leaves the list).
-        let wasActive = activeID == id
-        let mode = wasActive ? (then ?? AfterClose.current) : .lastUsed
-        var neighbours: (above: UUID?, below: UUID?) = (nil, nil)
-        if wasActive, mode != .lastUsed {
-            let space = tabs[index].spaceID
-            neighbours.above = tabs[..<index].last { $0.spaceID == space }?.id
-            neighbours.below = tabs[(index + 1)...].first { $0.spaceID == space }?.id
+        guard tab(id) != nil else { return }
+        let previous = activeID
+        let wasActive = previous == id
+        mutate { $0.close(id, then: then ?? AfterClose.current) }
+        for tab in takeRemoved() {
+            onTabRemoved?(tab)
+            router.forget(tab: tab.id)
+            tab.tearDown()
         }
-        leaveSplit(id)
-        let tab = tabs.remove(at: index)
-        if let url = tab.url, url.scheme != "about" {
-            recentlyClosed.append(ClosedTab(url: url, pinned: tab.isPinned, index: index))
-            if recentlyClosed.count > maxRecentlyClosed { recentlyClosed.removeFirst() }
-        }
-        onTabRemoved?(tab)
-        router.forget(tab: tab.id)
-        tab.tearDown()
-        if wasActive {
-            let next: UUID?
-            switch mode {
-            case .lastUsed: next = nil
-            case .below: next = neighbours.below ?? neighbours.above
-            case .above: next = neighbours.above ?? neighbours.below
-            }
-            // Arc-like by default: fall back to the most recently used remaining tab in this space.
-            setActive(next ?? visibleTabs.max(by: { $0.lastActivated < $1.lastActivated })?.id)
-        } else {
-            onChange?()
-        }
+        if wasActive { notifyActive(from: previous) } else { onChange?() }
     }
 
     @discardableResult
     public func reopenClosed() -> Tab? {
-        guard let closed = recentlyClosed.popLast() else { return nil }
-        let tab = create(url: closed.url, activate: true, pinned: closed.pinned, nextToActive: false)
-        move(tab.id, to: closed.index)
-        return tab
+        let previous = activeID, previousSpace = currentSpaceID
+        guard let model = mutate({ $0.reopenClosed() }) else { return nil }
+        if currentSpaceID != previousSpace { onSpaceChange?(spaceIndex(currentSpaceID) > spaceIndex(previousSpace)) }
+        notifyActive(from: previous)
+        return objects[model.id]
     }
 
     /// Activating a tab from another space switches to that space.
     public func activate(_ id: UUID) {
-        guard let tab = tab(id) else { return }
-        if tab.spaceID != currentSpaceID, let index = spaces.firstIndex(where: { $0.id == tab.spaceID }) {
-            let forward = index > (spaces.firstIndex { $0.id == currentSpaceID } ?? 0)
-            lastActive[currentSpaceID] = activeID
-            currentSpaceID = tab.spaceID
-            onSpaceChange?(forward)
-        }
-        setActive(id)
+        guard tab(id) != nil else { return }
+        let previous = activeID, previousSpace = currentSpaceID
+        mutate { $0.activate(id) }
+        if currentSpaceID != previousSpace { onSpaceChange?(spaceIndex(currentSpaceID) > spaceIndex(previousSpace)) }
+        notifyActive(from: previous)
     }
 
     public func activate(index: Int) {
         let visible = visibleTabs
         guard visible.indices.contains(index) else { return }
-        setActive(visible[index].id)
+        activate(visible[index].id)
     }
 
     public func activateLast() {
-        if let last = visibleTabs.last { setActive(last.id) }
+        if let last = visibleTabs.last { activate(last.id) }
     }
 
     public func cycle(by offset: Int) {
         let visible = visibleTabs
         guard !visible.isEmpty else { return }
         let current = visible.firstIndex { $0.id == activeID } ?? 0
-        let next = (current + offset % visible.count + visible.count) % visible.count
-        setActive(visible[next].id)
+        activate(visible[(current + offset % visible.count + visible.count) % visible.count].id)
     }
 
     // MARK: Spaces
 
     public func switchSpace(to id: UUID) {
-        guard id != currentSpaceID, let target = spaces.firstIndex(where: { $0.id == id }) else { return }
-        let forward = target > (spaces.firstIndex { $0.id == currentSpaceID } ?? 0)
-        lastActive[currentSpaceID] = activeID
-        currentSpaceID = id
-        let remembered = lastActive[id].flatMap(tab).flatMap { $0.spaceID == id ? $0 : nil }
+        guard id != currentSpaceID, spaces.contains(where: { $0.id == id }) else { return }
+        let forward = spaceIndex(id) > spaceIndex(currentSpaceID)
+        let previous = activeID
+        mutate { $0.switchSpace(to: id) }
         onSpaceChange?(forward)
-        setActive((remembered ?? visibleTabs.max { $0.lastActivated < $1.lastActivated })?.id)
+        notifyActive(from: previous)
     }
 
     /// Next/previous space, wrapping around.
@@ -224,20 +219,16 @@ public final class TabStore {
 
     @discardableResult
     public func addSpace(name: String, symbol: String, color: String, separateLogins: Bool = false, activate: Bool = true) -> Space {
-        var space = Space(name: name.isEmpty ? "Space \(spaces.count + 1)" : String(name.prefix(40)), symbol: symbol, color: color)
-        if separateLogins {
-            space.separateLogins = true
-            factory.setSeparateLogins(true, forSpace: space.id)
-        }
-        spaces.append(space)
+        let space = mutate(sync: false) { $0.addSpace(name: name, symbol: symbol, colorHex: color, separateLogins: separateLogins, activate: false) }
+        if separateLogins { factory.setSeparateLogins(true, forSpace: space.id) }
         if activate { switchSpace(to: space.id) } else { onChange?() }
         return space
     }
 
     public func updateSpace(_ space: Space) {
-        guard let index = spaces.firstIndex(where: { $0.id == space.id }) else { return }
-        let switchedStore = spaces[index].hasSeparateLogins != space.hasSeparateLogins
-        spaces[index] = space
+        guard let old = spaces.first(where: { $0.id == space.id }) else { return }
+        let switchedStore = old.hasSeparateLogins != space.hasSeparateLogins
+        mutate(sync: false) { $0.updateSpace(space) }
         if switchedStore {
             factory.setSeparateLogins(space.hasSeparateLogins, forSpace: space.id)
             tabs.filter { $0.spaceID == space.id }.forEach { $0.rebuildWebView() }
@@ -251,8 +242,8 @@ public final class TabStore {
         guard spaces.count > 1, let index = spaces.firstIndex(where: { $0.id == id }) else { return }
         if id == currentSpaceID { switchSpace(to: spaces[index == 0 ? 1 : index - 1].id) }
         tabs.filter { $0.spaceID == id }.forEach { close($0.id) }
-        let separate = spaces.remove(at: index).hasSeparateLogins
-        lastActive[id] = nil
+        let separate = spaces.first { $0.id == id }?.hasSeparateLogins ?? false
+        mutate { $0.deleteSpace(id) }
         onChange?()
         // Its tabs are gone, so its logins and site data go too.
         if separate { Task { [factory] in await factory.removeSpaceData(id) } }
@@ -260,47 +251,32 @@ public final class TabStore {
 
     public func moveTab(_ id: UUID, toSpace space: UUID) {
         guard let tab = tab(id), tab.spaceID != space, spaces.contains(where: { $0.id == space }) else { return }
-        leaveSplit(id)
         let store = factory.dataStore(forSpace: tab.spaceID)
-        tab.spaceID = space
+        let previous = activeID
+        mutate { $0.moveTab(id, toSpace: space) }
         // Cookies don't follow a tab into a space with a different store; it reloads there.
         if factory.dataStore(forSpace: space) !== store { tab.rebuildWebView() }
-        if activeID == id { setActive(visibleTabs.max { $0.lastActivated < $1.lastActivated }?.id) } else { onChange?() }
+        if previous == id { notifyActive(from: previous) } else { onChange?() }
     }
 
     public func setPinned(_ id: UUID, _ pinned: Bool) {
-        guard let index = tabs.firstIndex(where: { $0.id == id }), tabs[index].isPinned != pinned else { return }
-        let tab = tabs.remove(at: index)
-        tab.isPinned = pinned
-        let pinnedEnd = tabs.lastIndex(where: \.isPinned).map { $0 + 1 } ?? 0
-        tabs.insert(tab, at: pinnedEnd)
+        guard let tab = tab(id), tab.isPinned != pinned else { return }
+        mutate(sync: false) { $0.setPinned(id, pinned) }
         onChange?()
     }
 
     /// Moves within the tab's own section (pinned / unpinned); the index is clamped.
     public func move(_ id: UUID, to requested: Int) {
-        guard let from = tabs.firstIndex(where: { $0.id == id }) else { return }
-        let tab = tabs.remove(at: from)
-        let pinnedCount = tabs.filter(\.isPinned).count
-        let range = tab.isPinned ? 0...pinnedCount : pinnedCount...tabs.count
-        tabs.insert(tab, at: min(max(requested, range.lowerBound), range.upperBound))
+        guard tab(id) != nil else { return }
+        mutate(sync: false) { $0.move(id, to: requested) }
         onChange?()
     }
 
     public func closeAll() {
-        tabs.forEach { $0.tearDown() }
-        tabs.removeAll()
-        activeID = nil
-    }
-
-    private func setActive(_ id: UUID?) {
-        let changed = activeID != id
-        let previous = active
-        activeID = id
-        if changed { onActiveTabSwitched?(active, previous) }
-        active?.markActivated()
-        if changed { onActiveChange?(active) }
-        onChange?()
+        let all = tabs
+        mutate { $0.closeAll() }
+        removed = []
+        all.forEach { $0.tearDown() }
     }
 
     // MARK: Session
@@ -343,64 +319,27 @@ public final class TabStore {
     /// changes to `layout`, filling or dropping panes at the end.
     @discardableResult
     public func makeSplit(_ layout: SplitLayout, with requested: [UUID] = []) -> SplitGroup? {
-        guard let active else { return nil }
-        let requested = requested.filter { $0 != active.id && tab($0) != nil }
-        if let index = splits.firstIndex(where: { $0.tabIDs.contains(active.id) }) {
-            if !requested.isEmpty {
-                for id in requested { addToSplit(id) }
-                activate(active.id)
-                return split
-            }
-            var ids = splits[index].tabIDs
-            ids = Array(ids.prefix(layout.paneCount)) + fill(layout.paneCount - ids.count, after: active, excluding: ids)
-            splits[index].layout = layout
-            splits[index].tabIDs = ids
-            return splits[index]
-        }
-        requested.forEach(leaveSplit)
-        var ids = [active.id] + requested
-        ids = Array(ids.prefix(layout.paneCount))
-        ids += fill(layout.paneCount - ids.count, after: active, excluding: ids)
-        let group = SplitGroup(layout: layout, tabIDs: ids)
-        splits.append(group)
+        guard active != nil else { return nil }
+        let previous = activeID
+        let group = mutate { $0.makeSplit(layout, with: requested) }
+        if activeID != previous { notifyActive(from: previous) } else { onChange?() }
         return group
-    }
-
-    /// `count` tabs for new panes: the regular tabs after `anchor` in this space that aren't in a
-    /// split (wrapping around), then blank tabs.
-    private func fill(_ count: Int, after anchor: Tab, excluding taken: [UUID]) -> [UUID] {
-        guard count > 0 else { return [] }
-        let free = tabs.filter { !$0.isPinned && !taken.contains($0.id) && $0.spaceID == currentSpaceID && splitGroup(containing: $0.id) == nil }
-        let anchorIndex = tabs.firstIndex(of: anchor) ?? 0
-        let start = free.firstIndex { tabs.firstIndex(of: $0)! > anchorIndex } ?? 0
-        var ids = (free[start...] + free[..<start]).prefix(count).map(\.id)
-        while ids.count < count { ids.append(create(url: nil, activate: false, nextToActive: false).id) }
-        return ids
     }
 
     /// Adds a tab to the active tab's split (moving it out of any other split) and shows it.
     public func addToSplit(_ id: UUID) {
-        guard let activeID, let index = splits.firstIndex(where: { $0.tabIDs.contains(activeID) }),
-              !splits[index].tabIDs.contains(id), splits[index].layout.grown != nil else { return }
-        leaveSplit(id)
-        guard let target = splits.firstIndex(where: { $0.tabIDs.contains(activeID) }), let grown = splits[target].adding(id) else { return }
-        splits[target] = grown
-        activate(id)
+        let previous = activeID
+        mutate { $0.addToSplit(id) }
+        if activeID != previous { notifyActive(from: previous) }
     }
 
-    public func removeFromSplit(_ id: UUID) { leaveSplit(id) }
+    public func removeFromSplit(_ id: UUID) { mutate { $0.removeFromSplit(id) } }
 
     /// Link Scrolling for the split on screen.
-    public func setScrollLinked(_ linked: Bool) {
-        guard let activeID, let index = splits.firstIndex(where: { $0.tabIDs.contains(activeID) }) else { return }
-        splits[index].scrollLinked = linked
-    }
+    public func setScrollLinked(_ linked: Bool) { mutate { $0.setScrollLinked(linked) } }
 
     /// Ends the split on screen; other splits stay.
-    public func exitSplit() {
-        guard let activeID else { return }
-        splits.removeAll { $0.tabIDs.contains(activeID) }
-    }
+    public func exitSplit() { mutate { $0.exitSplit() } }
 
     // MARK: Moving tabs between windows
 
@@ -408,12 +347,13 @@ public final class TabStore {
     /// entry), to hand to another window's store (`adopt`). It leaves its split.
     @discardableResult
     public func detach(_ id: UUID) -> Tab? {
-        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return nil }
-        leaveSplit(id)
-        let tab = tabs.remove(at: index)
+        guard let tab = tab(id) else { return nil }
+        let previous = activeID
+        mutate { $0.close(id, remember: false) }
+        removed = []
         onTabRemoved?(tab)
         router.forget(tab: tab.id)
-        if activeID == id { setActive(visibleTabs.max(by: { $0.lastActivated < $1.lastActivated })?.id) } else { onChange?() }
+        if previous == id { notifyActive(from: previous) } else { onChange?() }
         return tab
     }
 
@@ -426,7 +366,12 @@ public final class TabStore {
         tab.rebind(router: router)
         tab.spaceID = currentSpaceID
         if factory.dataStore(forSpace: currentSpaceID) !== store { tab.rebuildWebView() }
-        _ = insert(tab, activate: activate, pinned: false, nextToActive: true)
+        tab.delegate = tabDelegate
+        objects[tab.id] = tab
+        let previous = activeID
+        mutate { $0.create(id: tab.id, url: tab.url, title: tab.title, activate: activate, pinned: false, nextToActive: true) }
+        onTabAdded?(tab)
+        if activate || previous == nil { notifyActive(from: previous) } else { onChange?() }
     }
 
     /// Opens a local file the user chose (Open panel, Finder, or a restored bookmark).
@@ -440,17 +385,15 @@ public final class TabStore {
 
     public func restore(_ session: SessionStore.Session) {
         if let saved = session.spaces, !saved.isEmpty {
-            spaces = saved
+            mutate { $0.replaceSpaces(saved, current: session.currentSpace) }
             for space in saved where space.hasSeparateLogins { factory.setSeparateLogins(true, forSpace: space.id) }
-            currentSpaceID = session.currentSpace.flatMap { id in saved.first { $0.id == id }?.id } ?? saved[0].id
         }
         let known = Set(spaces.map(\.id))
-        let restoring = currentSpaceID
         // The tab made for each entry; nil where a file couldn't be reopened.
         var created: [Tab?] = []
         created.reserveCapacity(session.tabs.count)
         for entry in session.tabs {
-            currentSpaceID = entry.space.flatMap { known.contains($0) ? $0 : nil } ?? spaces[0].id
+            let space = entry.space.flatMap { known.contains($0) ? $0 : nil } ?? spaces[0].id
             if entry.url.isFileURL {
                 var stale = false
                 guard let bookmark = entry.bookmark,
@@ -458,19 +401,22 @@ public final class TabStore {
                     created.append(nil)
                     continue
                 }
-                created.append(openFile(file, activate: false, pinned: entry.pinned))
+                let tab = createAsleep(url: file, title: "", pinned: entry.pinned, in: space)
+                tab.holdSecurityScope(file)
+                tab.load(file)
+                created.append(tab)
             } else if ["http", "https"].contains(entry.url.scheme?.lowercased()) {
                 // Restored tabs load when first opened, not all at launch.
-                created.append(createAsleep(url: entry.url, title: entry.title, pinned: entry.pinned, in: currentSpaceID))
+                created.append(createAsleep(url: entry.url, title: entry.title, pinned: entry.pinned, in: space))
             } else {
                 created.append(nil) // data:, webkit-extension: and other schemes are never reopened from a saved session
             }
         }
-        currentSpaceID = restoring
-        if let i = session.activeIndex, created.indices.contains(i), let tab = created[i], tab.spaceID == currentSpaceID { setActive(tab.id) }
-        else { setActive(visibleTabs.first?.id) }
+        if let i = session.activeIndex, created.indices.contains(i), let tab = created[i], tab.spaceID == currentSpaceID { activate(tab.id) }
+        else if let first = visibleTabs.first { activate(first.id) }
+        else { onChange?() }
         let restored = Self.restoredSplits(session.splits ?? [], created: created)
-        if !restored.isEmpty { splits = restored }
+        if !restored.isEmpty { mutate { $0.replaceSplits(restored) } }
     }
 
     /// Rebuilds saved split groups from the restored tabs. A group that doesn't describe real tabs
@@ -492,5 +438,18 @@ public final class TabStore {
             groups.append(group)
         }
         return groups
+    }
+}
+
+extension AfterClose {
+    /// Settings → Tabs → After closing a tab, show.
+    static var current: AfterClose { AfterClose(stored: UserDefaults.standard.string(forKey: Preferences.Key.afterClosingTab)) }
+
+    var label: String {
+        switch self {
+        case .lastUsed: return "Last used tab"
+        case .below: return "Tab below"
+        case .above: return "Tab above"
+        }
     }
 }
