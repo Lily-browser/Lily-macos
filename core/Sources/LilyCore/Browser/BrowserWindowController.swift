@@ -393,6 +393,7 @@ public final class BrowserWindowController: NSWindowController, NSWindowDelegate
 
     /// Memory pressure: sleep every background tab that can sleep.
     func sleepBackgroundTabs() {
+        guard TabSleeper.sleepsOnMemoryPressure() else { return }
         Task { await sleeper?.sweep(force: true) }
     }
 

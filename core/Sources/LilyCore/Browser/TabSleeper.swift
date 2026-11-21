@@ -8,6 +8,17 @@ import LilyKit
 @MainActor
 final class TabSleeper {
     static let defaultMinutes = 15
+
+    enum Key {
+        /// Settings → Tabs → "Also sleep tabs when the Mac is low on memory" (on by default).
+        static let onMemoryPressure = "SleepTabsOnMemoryPressure"
+        /// Settings → Tabs → "Never sleep pinned tabs" (off by default).
+        static let keepPinnedAwake = "NeverSleepPinnedTabs"
+    }
+
+    /// Whether a memory-pressure warning may put background tabs to sleep at once, whatever their idle time.
+    static func sleepsOnMemoryPressure(_ defaults: UserDefaults = .standard) -> Bool { defaults.object(forKey: Key.onMemoryPressure) as? Bool ?? true }
+    static func keepsPinnedAwake(_ defaults: UserDefaults = .standard) -> Bool { defaults.object(forKey: Key.keepPinnedAwake) as? Bool ?? false }
     /// A tab that's busy (playing media, using the camera) is looked at again after this long.
     static let busyRecheck: TimeInterval = 5 * 60
 
@@ -31,8 +42,9 @@ final class TabSleeper {
     /// Called when tabs are switched, opened or closed: waits until the next tab could sleep.
     func reschedule(now: Date = Date()) {
         guard let store, let threshold = Self.threshold else { stop(); return }
+        let keepPinned = Self.keepsPinnedAwake()
         let due = store.tabs.compactMap { tab -> Date? in
-            guard Self.isEligible(lastActivated: .distantPast, now: now, threshold: threshold, isActive: tab.id == store.activeID,
+            guard !(keepPinned && tab.isPinned), Self.isEligible(lastActivated: .distantPast, now: now, threshold: threshold, isActive: tab.id == store.activeID,
                                   inSplit: store.split?.tabIDs.contains(tab.id) ?? false,
                                   isSleeping: tab.isSleeping, scheme: tab.url?.scheme, force: false) else { return nil }
             return max(tab.lastActivated.addingTimeInterval(threshold), busyUntil[tab.id] ?? .distantPast)
@@ -75,14 +87,16 @@ final class TabSleeper {
         guard let store else { return }
         let now = Date()
         let threshold = Self.threshold
+        let keepPinned = Self.keepsPinnedAwake()
         let eligible = { (tab: Tab) in
-            Self.isEligible(lastActivated: tab.lastActivated, now: now, threshold: threshold, isActive: tab.id == store.activeID,
+            !(keepPinned && tab.isPinned) && Self.isEligible(lastActivated: tab.lastActivated, now: now, threshold: threshold, isActive: tab.id == store.activeID,
                             inSplit: store.split?.tabIDs.contains(tab.id) ?? false,
                             isSleeping: tab.isSleeping, scheme: tab.url?.scheme, force: force)
         }
         // Closed tabs leave no busy marks behind.
         let open = Set(store.tabs.map(\.id))
         busyUntil = busyUntil.filter { open.contains($0.key) }
+        var slept = 0
         for tab in store.tabs where eligible(tab) {
             if await isBusy(tab) {
                 busyUntil[tab.id] = now.addingTimeInterval(Self.busyRecheck)
@@ -92,6 +106,12 @@ final class TabSleeper {
             guard store.tab(tab.id) === tab, eligible(tab) else { continue }
             busyUntil[tab.id] = nil
             tab.sleep()
+            slept += 1
+        }
+        // Only the cause and a count (never a tab's address), so "why did my tabs sleep?" has an answer in the log.
+        if slept > 0 {
+            let cause = force ? "memory pressure" : "idle timeout"
+            Log.app.info("Slept \(slept, privacy: .public) tab(s): \(cause, privacy: .public)")
         }
     }
 }
