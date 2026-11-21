@@ -76,7 +76,24 @@ enum AppIconArt {
         ctx.drawRadialGradient(glow, startCenter: CGPoint(x: 512, y: 960), startRadius: 0,
                                endCenter: CGPoint(x: 512, y: 960), endRadius: 620, options: [])
 
-        // The mark: a lily made of three pointed petals fanning out from one point.
+        drawPetals(in: ctx, brightness: colors.petal, shadow: true)
+        ctx.restoreGState()
+
+        if colors.rim > 0 {
+            ctx.saveGState()
+            ctx.addPath(shape)
+            ctx.setStrokeColor(NSColor(white: 1, alpha: colors.rim).cgColor)
+            ctx.setLineWidth(4)
+            ctx.strokePath()
+            ctx.restoreGState()
+        }
+
+        NSGraphicsContext.restoreGraphicsState()
+        return rep.representation(using: .png, properties: [:])!
+    }
+
+    /// The mark: a lily made of three pointed petals fanning out from one point, on the 1024pt canvas.
+    private static func drawPetals(in ctx: CGContext, brightness: CGFloat, shadow: Bool) {
         func petal(angle: CGFloat, length: CGFloat, width: CGFloat) -> CGPath {
             let path = CGMutablePath()
             path.move(to: .zero)
@@ -93,24 +110,26 @@ enum AppIconArt {
                                               (-CGFloat.pi * 0.21, CGFloat(420), CGFloat(0.70), CGFloat(112)),
                                               (0, CGFloat(500), CGFloat(1), CGFloat(132))] {
             ctx.saveGState()
-            ctx.setShadow(offset: CGSize(width: 0, height: -8), blur: 22, color: NSColor.black.withAlphaComponent(0.16).cgColor)
+            if shadow { ctx.setShadow(offset: CGSize(width: 0, height: -8), blur: 22, color: NSColor.black.withAlphaComponent(0.16).cgColor) }
             ctx.addPath(petal(angle: angle, length: length, width: width))
-            ctx.setFillColor(NSColor(white: colors.petal, alpha: alpha).cgColor)
+            ctx.setFillColor(NSColor(white: brightness, alpha: alpha).cgColor)
             ctx.fillPath()
             ctx.restoreGState()
         }
         ctx.restoreGState()
-        ctx.restoreGState()
+    }
 
-        if colors.rim > 0 {
-            ctx.saveGState()
-            ctx.addPath(shape)
-            ctx.setStrokeColor(NSColor(white: 1, alpha: colors.rim).cgColor)
-            ctx.setLineWidth(4)
-            ctx.strokePath()
-            ctx.restoreGState()
-        }
-
+    /// Just the lily, white on a transparent 1024 px canvas: the foreground layer of the system-styled icon
+    /// (the system supplies the background, shadow, glass, dark and tinted renderings).
+    static func foregroundPNG(pixels: Int = 1024) -> Data {
+        let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: pixels, pixelsHigh: pixels, bitsPerSample: 8,
+                                   samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                   bytesPerRow: 0, bitsPerPixel: 0)!
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        let ctx = NSGraphicsContext.current!.cgContext
+        ctx.scaleBy(x: CGFloat(pixels) / 1024, y: CGFloat(pixels) / 1024)
+        drawPetals(in: ctx, brightness: 1, shadow: false)
         NSGraphicsContext.restoreGraphicsState()
         return rep.representation(using: .png, properties: [:])!
     }

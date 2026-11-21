@@ -7,8 +7,9 @@ extension AppIconVariant: StoredChoice {
 /// Settings → Appearance → Icon: shows the chosen icon in the Dock and ⌘-Tab while Lily runs, in
 /// its dark rendering when the app's appearance is dark (the system's, or Lily's own Theme).
 /// macOS keeps the bundle's icon for Finder and for the Dock while Lily is closed; changing that
-/// would mean modifying the signed app. The default icon in light appearance draws nothing at
-/// all: the bundle's own icon is used, so a default install pays nothing at launch.
+/// would mean modifying the signed app. The default icon draws nothing at all on macOS 26 (the
+/// bundle's icon follows the system's Default, Dark, Clear and Tinted styles) and in light
+/// appearance on older systems, so a default install pays nothing at launch.
 @MainActor
 final class AppIconController {
     enum Key {
@@ -21,8 +22,14 @@ final class AppIconController {
         let dark: Bool
     }
 
+    /// macOS 26 draws the bundle's own icon in the light, dark, clear and tinted styles the user chose in
+    /// System Settings (the `.icon` made by scripts/bundle.sh), so the default icon needs no help there.
+    static var systemStylesTheBundleIcon: Bool { ProcessInfo.processInfo.isOperatingSystemAtLeast(OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)) }
+
     /// What the running app's icon should be; nil means the bundle's own icon.
-    static func choice(variant: AppIconVariant, matchesDarkMode: Bool, systemIsDark: Bool) -> Choice? {
+    static func choice(variant: AppIconVariant, matchesDarkMode: Bool, systemIsDark: Bool,
+                       systemStylesBundleIcon: Bool = systemStylesTheBundleIcon) -> Choice? {
+        if variant == .default && systemStylesBundleIcon { return nil }
         let dark = matchesDarkMode && systemIsDark
         return variant == .default && !dark ? nil : Choice(variant: variant, dark: dark)
     }
