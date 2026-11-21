@@ -58,4 +58,35 @@ import Testing
         store.activate(first.id)
         #expect(!first.isSleeping)
     }
+
+    private func scratchDefaults() -> (UserDefaults, String) {
+        let name = "lily-sleep-\(UUID().uuidString)"
+        return (UserDefaults(suiteName: name)!, name)
+    }
+
+    @Test func sleepSettingsDefaultToTodaysBehaviour() {
+        let (defaults, name) = scratchDefaults()
+        defer { defaults.removePersistentDomain(forName: name) }
+        #expect(TabSleeper.sleepsOnMemoryPressure(defaults) && !TabSleeper.keepsPinnedAwake(defaults))
+        defaults.set(false, forKey: TabSleeper.Key.onMemoryPressure)
+        defaults.set(true, forKey: TabSleeper.Key.keepPinnedAwake)
+        #expect(!TabSleeper.sleepsOnMemoryPressure(defaults) && TabSleeper.keepsPinnedAwake(defaults))
+    }
+
+    @Test func pinnedTabsStayAwakeWhenAsked() async throws {
+        UserDefaults.standard.set(true, forKey: TabSleeper.Key.keepPinnedAwake)
+        defer { UserDefaults.standard.removeObject(forKey: TabSleeper.Key.keepPinnedAwake) }
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let registry = try ScriptRegistry(manifestURL: root.appendingPathComponent("injections/manifest.json"))
+        let store = TabStore(factory: WebViewFactory(registry: registry, dataStore: .nonPersistent()), router: IPCRouter())
+        let pinned = store.create(url: URL(string: "https://pinned.invalid/")!)
+        let plain = store.create(url: URL(string: "https://plain.invalid/")!)
+        store.setPinned(pinned.id, true)
+        store.create(url: URL(string: "https://front.invalid/")!)
+        let sleeper = TabSleeper(store: store)
+        defer { sleeper.stop() }
+        sleeper.isBusy = { _ in false }
+        await sleeper.sweep(force: true)
+        #expect(plain.isSleeping && !pinned.isSleeping)
+    }
 }

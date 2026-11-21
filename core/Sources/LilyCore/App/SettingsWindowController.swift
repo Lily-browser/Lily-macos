@@ -147,6 +147,8 @@ struct GeneralSettingsView: View {
 struct TabsSettingsView: View {
     @AppStorage(Preferences.Key.newTabsNextToCurrent) private var nextToCurrent = true
     @AppStorage(Preferences.Key.sleepTabsAfter) private var sleepAfter = TabSleeper.defaultMinutes
+    @AppStorage(TabSleeper.Key.onMemoryPressure) private var sleepOnMemoryPressure = true
+    @AppStorage(TabSleeper.Key.keepPinnedAwake) private var keepPinnedAwake = false
     @AppStorage(Preferences.Key.pauseIdlePanesAfter) private var pausePanesAfter = PaneFreezer.defaultMinutes
     @AppStorage(Preferences.Key.newTabAction) private var newTabAction = NewTabAction.default.rawValue
     @AppStorage(Preferences.Key.afterClosingTab) private var afterClose = TabStore.AfterClose.default.rawValue
@@ -186,8 +188,10 @@ struct TabsSettingsView: View {
                 Text("Never").tag(0)
             }
             .frame(width: 260)
+            Toggle("Also sleep background tabs when the Mac is low on memory", isOn: $sleepOnMemoryPressure)
+            Toggle("Never sleep pinned tabs", isOn: $keepPinnedAwake)
             LabeledContent("") {
-                Text("Sleeping tabs release their memory and use no CPU; they reload where you left off when you open them. Tabs playing media or using the camera stay awake, and Low Power Mode sleeps tabs after 5 minutes.")
+                Text("Sleeping tabs release their memory and use no CPU; they reload where you left off when you open them. Tabs playing media or using the camera stay awake, and Low Power Mode sleeps tabs after 5 minutes. When memory is low, macOS can ask Lily to sleep every background tab at once, whatever the time above; turn that off if tabs sleep sooner than you want.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Picker("Pause idle split panes after:", selection: $pausePanesAfter) {
