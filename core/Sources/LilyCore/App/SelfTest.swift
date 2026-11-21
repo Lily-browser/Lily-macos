@@ -239,10 +239,14 @@ enum SelfTest {
             let barShown = window.contentController.isFindBarShown
             window.find.query = "PARAGRAPH" // case-insensitive; the fixture has it twice
             let counted = await waitUntil(5) { window.find.found == true && window.find.matches == 2 }
+            // Next moves "1 of 2" to "2 of 2".
+            let firstOfTwo = await waitUntil(5) { window.find.current == 1 }
+            window.find.next()
+            let secondOfTwo = await waitUntil(5) { window.find.current == 2 }
             window.find.query = "no such words here"
             let missing = await waitUntil(5) { window.find.found == false }
             window.performTextFinderAction(finderItem(.hideFindInterface))
-            check("find in page", canFind && barShown && counted && missing && !window.contentController.isFindBarShown,
+            check("find in page", canFind && barShown && counted && firstOfTwo && secondOfTwo && missing && !window.contentController.isFindBarShown,
                   ["validates": .bool(canFind), "shown": .bool(barShown), "matches": .number(Double(window.find.matches ?? -1)),
                    "found": .bool(counted), "notFound": .bool(missing)])
 

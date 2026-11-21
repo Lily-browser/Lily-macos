@@ -13,6 +13,8 @@ final class FindModel {
     private(set) var found: Bool?
     /// Matches in the page's text (capped by find-count.js); nil when unknown.
     private(set) var matches: Int?
+    /// Which match is selected (1-based) when it can be told; nil shows only the count.
+    private(set) var current: Int?
     /// Bumped to put the cursor back in the field (⌘F while the bar is already open).
     private(set) var focusRequest = 0
     @ObservationIgnored private weak var controller: BrowserWindowController?
@@ -38,6 +40,7 @@ final class FindModel {
         isVisible = false
         found = nil
         matches = nil
+        current = nil
         controller?.contentController.setFindBar(nil)
         controller?.focusActivePage()
     }
@@ -77,6 +80,7 @@ final class FindModel {
         guard isVisible, let tab = controller?.tabs.active, !query.isEmpty else {
             found = nil
             matches = nil
+            current = nil
             return
         }
         task = Task { [weak self] in
@@ -91,10 +95,11 @@ final class FindModel {
             let result = try? await tab.webView.find(query, configuration: configuration)
             guard let self, !Task.isCancelled, self.query == query else { return }
             self.found = result?.matchFound ?? false
-            guard fromTyping || self.matches == nil else { return }
+            // Counted after every search, so "3 of 12" follows Next and Previous too.
             let count = try? await tab.callInjection("find.count", ["query": .string(query)], timeout: 3)
             guard !Task.isCancelled, self.query == query else { return }
             self.matches = count?["count"]?.int
+            self.current = result?.matchFound == true ? count?["index"]?.int : nil
         }
     }
 }
@@ -142,6 +147,8 @@ struct FindBarView: View {
         case false?: return ("Not found", true)
         case true?:
             guard let matches = model.matches, matches > 0 else { return nil }
+            let total = matches >= 1_000 ? "1,000+" : "\(matches)"
+            if let current = model.current, matches > 1 { return ("\(current) of \(total)", false) }
             return (matches >= 1_000 ? "1,000+ matches" : matches == 1 ? "1 match" : "\(matches) matches", false)
         case nil: return nil
         }
