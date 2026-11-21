@@ -111,7 +111,19 @@ jobs:
           swift --version
 
       - name: Test
+        timeout-minutes: 12 # a healthy run takes about 5; a hung test must not hold the runner for 40
         run: make check
+
+      # If the tests hang, say where: the stuck test process is still alive after the step times out.
+      - name: Diagnose a hung test
+        if: ${{ failure() }}
+        run: |
+          export PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+          for pid in $(pgrep -f swiftpm-testing || true); do
+            echo "::group::sample of swiftpm-testing $pid"
+            sample "$pid" 5 -mayDie 2>&1 | head -300 || true
+            echo "::endgroup::"
+          done
 
       - name: Import signing certificate
         if: env.HAS_SIGNING == 'true'
