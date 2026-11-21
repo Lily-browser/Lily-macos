@@ -41,7 +41,9 @@ import WebKit
 @Suite @MainActor struct ExtensionMessageDiagnosticsTests {
     /// The shim's message logger sees what a page sends the background without getting in the way
     /// of the extension's own (asynchronous) reply.
-    @Test func receivedMessagesAreLoggedAndStillAnswered() async throws {
+    /// WebKit's extension background can fail to load on a busy runner and never report back: the limit turns that
+    /// hang into a failure (CI retries once) instead of holding the runner until the job times out.
+    @Test(.timeLimit(.minutes(1))) func receivedMessagesAreLoggedAndStillAnswered() async throws {
         guard #available(macOS 15.4, *) else { return }
         let shim = try Data(contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .appendingPathComponent("../../../injections/extension-worker-compat.js").standardizedFileURL)

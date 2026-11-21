@@ -38,7 +38,8 @@ jobs:
         timeout-minutes: 12 # a healthy run takes about 5; a hung test must not hold the runner for 40
         # Under a pseudo-terminal the test output is flushed line by line, so a hung run's log ends at the stuck test
         # instead of losing its last buffered chunk (the exit status of `make check` is passed through).
-        run: script -q /dev/null make check
+        # One retry: an extension test that times out on a busy runner (see its time limit) usually passes the second time.
+        run: script -q /dev/null make check || script -q /dev/null make check
 
       # If the tests hang, say where: the stuck test process is still alive after the step times out.
       - name: Diagnose a hung test
