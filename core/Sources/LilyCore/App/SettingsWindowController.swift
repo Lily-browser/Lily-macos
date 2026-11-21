@@ -602,7 +602,9 @@ struct PrivacySettingsView: View {
                 .help("Shares the address and title of the page you're on with every device signed in to your Apple account")
             Toggle("Warn about fraudulent websites", isOn: $fraudWarnings)
                 .onChange(of: fraudWarnings) { (NSApp.delegate as? AppDelegate)?.fraudWarningsChanged() }
-                .help("Checks pages against lists of known phishing and malware sites, as Safari does. Lily sends only part of a hash of each address, relayed by Apple, never the address itself.")
+                .help("Would check pages against lists of known phishing and malware sites, as Safari does (only part of a hash of each address, relayed by Apple). Not working yet: macOS's sandbox blocks Lily from reaching Apple's Safe Browsing service, so no warnings are shown and nothing is sent.")
+            Text("Not active yet: the sandbox blocks Apple's Safe Browsing service, so Lily shows no warnings.")
+                .font(.caption).foregroundStyle(.secondary).padding(.leading, 20)
             Picker("Keep history:", selection: $retention) {
                 Text("One day").tag(1)
                 Text("One week").tag(7)
