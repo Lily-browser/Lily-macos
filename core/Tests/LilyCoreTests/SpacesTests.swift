@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import LilyCore
+import LilyKit
 
 @Suite @MainActor struct SpacesTests {
     private static let root = URL(fileURLWithPath: #filePath)
@@ -62,5 +63,13 @@ import Testing
         #expect(restored.currentSpaceID == work.id)
         #expect(restored.visibleTabs.map(\.url?.host) == ["work.example"])
         #expect(restored.tabs.count == 2)
+    }
+
+    /// Sessions saved before Space moved to LilyKit store the color under `color`.
+    @Test func sessionsSavedBeforeTheSharedSpaceStillLoad() throws {
+        let id = UUID()
+        let old = Data(##"[{"id":"\##(id)","name":"Work","symbol":"star.fill","color":"#0A84FF","separateLogins":true}]"##.utf8)
+        let spaces = try JSONDecoder().decode([Space].self, from: old)
+        #expect(spaces.first?.color == "#0A84FF" && spaces.first?.hasSeparateLogins == true)
     }
 }
