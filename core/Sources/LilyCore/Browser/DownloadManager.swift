@@ -6,6 +6,10 @@ import WebKit
 /// progress for the sidebar's Downloads popover. Downloads from private windows are listed only
 /// in private windows, forgotten when the last one closes, and their files don't keep the address
 /// they came from (`scrubOrigin`).
+///
+/// A file is written as `Name.ext.download` and renamed to `Name.ext` only when it is complete (as
+/// Safari does), so Finder never shows a half-written file that opens as "damaged". A failed or
+/// cancelled download leaves nothing behind unless WebKit gave resume data to continue from.
 @MainActor @Observable
 public final class DownloadManager: NSObject, WKDownloadDelegate {
     public static let shared = DownloadManager()
@@ -14,7 +18,9 @@ public final class DownloadManager: NSObject, WKDownloadDelegate {
         public enum State: Equatable { case downloading, finished, failed(String), cancelled }
 
         public let id = UUID()
+        /// The name the file will have once it is complete.
         public var filename: String
+        /// Where the file is now: the `.download` file while running, the final file when finished.
         public var destination: URL?
         public var source: URL?
         public var receivedBytes: Int64 = 0
@@ -36,6 +42,8 @@ public final class DownloadManager: NSObject, WKDownloadDelegate {
     @ObservationIgnored private var ids: [ObjectIdentifier: UUID] = [:]
     @ObservationIgnored private var progressObservations: [UUID: NSKeyValueObservation] = [:]
     @ObservationIgnored private var resumeData: [UUID: Data] = [:]
+    /// Files chosen for running downloads, which don't exist on disk yet when the next one picks its name.
+    @ObservationIgnored private var reserved: Set<URL> = []
 
     /// The downloads a window shows: private windows' own, or everyone else's.
     public func items(privateWindow: Bool) -> [Item] { items.filter { $0.isPrivate == privateWindow } }
@@ -70,10 +78,12 @@ public final class DownloadManager: NSObject, WKDownloadDelegate {
                          suggestedFilename: String) async -> URL? {
         let folder = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads")
-        let url = Self.uniqueURL(in: folder, name: Sanitize.filename(suggestedFilename))
+        let name = Sanitize.filename(suggestedFilename)
+        let url = Self.uniqueURL(in: folder, name: name + ".download", reserved: reserved)
+        reserved.insert(url)
         if let id = ids[ObjectIdentifier(download)] {
             update(id) {
-                $0.filename = url.lastPathComponent
+                $0.filename = name
                 $0.destination = url
                 $0.totalBytes = response.expectedContentLength
             }
@@ -83,9 +93,24 @@ public final class DownloadManager: NSObject, WKDownloadDelegate {
     }
 
     public func downloadDidFinish(_ download: WKDownload) {
-        guard let id = finish(download) else { return }
-        update(id) { $0.state = .finished; if $0.totalBytes > 0 { $0.receivedBytes = $0.totalBytes } }
-        if let item = items.first(where: { $0.id == id }), item.isPrivate, let file = item.destination { Self.scrubOrigin(file) }
+        guard let id = finish(download), let item = items.first(where: { $0.id == id }), let partial = item.destination else { return }
+        reserved.remove(partial)
+        // Complete: give it its real name. The rename keeps the file's quarantine and metadata.
+        let final = Self.uniqueURL(in: partial.deletingLastPathComponent(), name: item.filename, reserved: reserved)
+        do {
+            try FileManager.default.moveItem(at: partial, to: final)
+        } catch {
+            Log.web.error("Couldn't finish a download: \(error.localizedDescription, privacy: .private)")
+            update(id) { $0.state = .failed("The file couldn't be saved.") }
+            return
+        }
+        update(id) {
+            $0.state = .finished
+            $0.destination = final
+            $0.filename = final.lastPathComponent
+            if $0.totalBytes > 0 { $0.receivedBytes = $0.totalBytes }
+        }
+        if item.isPrivate { Self.scrubOrigin(final) }
         if !NSApp.isActive { NSApp.requestUserAttention(.informationalRequest) }
     }
 
@@ -95,8 +120,10 @@ public final class DownloadManager: NSObject, WKDownloadDelegate {
         let isPrivate = items.first(where: { $0.id == id })?.isPrivate == true
         // Resume data holds the source address, so a private download keeps none; Retry starts over.
         if let resumeData, !isPrivate { self.resumeData[id] = resumeData }
-        if isPrivate, let file = items.first(where: { $0.id == id })?.destination, FileManager.default.fileExists(atPath: file.path) {
-            Self.scrubOrigin(file)
+        // The half-written file stays only when there is resume data to continue it.
+        if let item = items.first(where: { $0.id == id }), let file = item.destination {
+            reserved.remove(file)
+            if self.resumeData[id] == nil { try? FileManager.default.removeItem(at: file); update(id) { $0.destination = nil } }
         }
         update(id) { $0.state = cancelled ? .cancelled : .failed(Sanitize.errorMessage(error)) }
         Log.web.error("Download failed: \(error.localizedDescription, privacy: .private)")
@@ -137,7 +164,8 @@ public final class DownloadManager: NSObject, WKDownloadDelegate {
     }
 
     public func remove(_ id: UUID) {
-        guard items.first(where: { $0.id == id })?.isActive == false else { return }
+        guard let item = items.first(where: { $0.id == id }), !item.isActive else { return }
+        discard(item)
         items.removeAll { $0.id == id }
         resumeData[id] = nil
     }
@@ -145,12 +173,14 @@ public final class DownloadManager: NSObject, WKDownloadDelegate {
     /// A window's Clear button: its own finished downloads.
     public func clearFinished(privateWindow: Bool) {
         let gone = Set(items.filter { !$0.isActive && $0.isPrivate == privateWindow }.map(\.id))
+        items.filter { gone.contains($0.id) }.forEach(discard)
         items.removeAll { gone.contains($0.id) }
         gone.forEach { resumeData[$0] = nil }
     }
 
     /// Clear Browsing Data: every finished download, private and not.
     public func clearFinished() {
+        items.filter { !$0.isActive }.forEach(discard)
         items.removeAll { !$0.isActive }
         resumeData.removeAll()
     }
@@ -168,6 +198,7 @@ public final class DownloadManager: NSObject, WKDownloadDelegate {
                 ids.removeValue(forKey: ObjectIdentifier(download))
                 download.cancel { _ in }
             }
+            if let item = items.first(where: { $0.id == id }) { discard(item) }
             progressObservations[id] = nil
             lastProgressUpdate[id] = nil
             resumeData[id] = nil
@@ -209,17 +240,24 @@ public final class DownloadManager: NSObject, WKDownloadDelegate {
         return id
     }
 
+    /// Deletes what is left of a download that never finished (a finished file is the user's and stays).
+    private func discard(_ item: Item) {
+        guard item.state != .finished, let file = item.destination else { return }
+        try? FileManager.default.removeItem(at: file)
+        reserved.remove(file)
+    }
+
     private func update(_ id: UUID, _ change: (inout Item) -> Void) {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
         change(&items[index])
     }
 
-    nonisolated static func uniqueURL(in directory: URL, name: String) -> URL {
+    nonisolated static func uniqueURL(in directory: URL, name: String, reserved: Set<URL> = []) -> URL {
         var candidate = directory.appendingPathComponent(name)
         let base = (name as NSString).deletingPathExtension
         let ext = (name as NSString).pathExtension
         var n = 1
-        while FileManager.default.fileExists(atPath: candidate.path) {
+        while FileManager.default.fileExists(atPath: candidate.path) || reserved.contains(candidate) {
             n += 1
             candidate = directory.appendingPathComponent(ext.isEmpty ? "\(base) \(n)" : "\(base) \(n).\(ext)")
         }

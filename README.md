@@ -148,7 +148,7 @@ Lily is three repositories in the [Lily-browser](https://github.com/Lily-browser
 
 ```
 Lily-macos  (this repo)   AppKit/SwiftUI shell, WebKit extension runtime, signing, DMG
-Lily-ios                  SwiftUI shell for iPhone/iPad (planned)
+Lily-ios                  SwiftUI shell for iPhone/iPad (early: simulator and your own device)
         └──── both depend on ────▶  LilyKit   platform-neutral Swift package (macOS 14+, iOS 18+)
 ```
 
@@ -199,7 +199,7 @@ LilyKit holds what has no UI: ad-block rule conversion, sealed storage and the K
 ### Tabs, web views and memory
 
 - A **`Tab`** is cheap until it's shown: its `WKWebView` (and with it a web content process) is created on first use of `tab.webView` and released when the tab sleeps, keeping its back/forward list and scroll position (`interactionState`). Restored and imported tabs start asleep. This is what lets 5,000+ tabs cost about a kilobyte each (`TabManagerPerformanceTests`).
-- **`TabStore`** (one per window) owns the ordered tabs, the active tab, spaces, split groups and recently closed tabs. Pinned tabs always sort first; split groups move as one block.
+- **`TabStore`** (one per window) holds the live `Tab` objects and keeps them in step with LilyKit's **`TabCollection`**, a pure value type that owns the rules: ordering (pinned tabs first, split groups move as one block), the active tab, spaces, split groups, recently closed tabs and the saved session. The same rules run in Lily for iOS. `TabStore` applies each change to the collection and then adds or removes web views to match (`mutate`, `rebuild`).
 - **`TabSleeper`** releases web views of background tabs idle past the threshold, except tabs playing media, capturing camera or microphone, or in the visible split. It schedules one wake-up for the next tab that could sleep.
 - **`PaneFreezer`** pauses unfocused split panes: the pane is covered with its snapshot and its web view hidden, so WebKit suspends it (`inactiveSchedulingPolicy = .suspend`, set for every web view). The self-test measures it: 95 animation frames in 1.5 s running, 0 while paused.
 - **Spaces and data stores.** `WebViewFactory.dataStore(forSpace:)` returns the shared persistent store, or for a space with Separate logins its own `WKWebsiteDataStore(forIdentifier: space.id)`. A tab gets its space before its first web view is made; switching the toggle or moving a tab between stores rebuilds its web view (`Tab.rebuildWebView`). Private windows use a separate factory with one non-persistent store and no extensions.
@@ -270,7 +270,7 @@ Install, audit, pinning and verification work on every macOS version (`Extension
 |---|---|
 | `core/migration/` | `core/Sources/LilyCore/Migration/` |
 | `core/tabs/` | `core/Sources/LilyCore/Browser/` (`Tab`, `TabStore`, `TabSleeper`, `PaneFreezer`, `SplitView`) |
-| `core/workspaces/` | spaces in `Browser/TabStore.swift`, data stores in `Browser/WebViewFactory.swift` |
+| `core/workspaces/` | spaces in LilyKit `Tabs/` (`Space`, `TabCollection`), applied by `Browser/TabStore.swift`; data stores in `Browser/WebViewFactory.swift` |
 | `core/session/` | `core/Sources/LilyCore/Session/` (`FormDrafts`) and `Support/SessionStore.swift` |
 | `core/` extensions (`ExtensionManifest`, `ExtensionManager`) | `core/Sources/LilyCore/Extensions/` |
 | `injections/` (Swift side: `ExtensionScriptInjector`, `ExtensionMessageBridge`) | `Extensions/` and `Scripts/`; the JavaScript is in the top-level `injections/` |
@@ -310,6 +310,7 @@ Files that need neither AppKit nor SwiftUI live in LilyKit, a separate package t
 | `Agent/` | — | `Assistant`, `AssistantContextStore`, `AssistantModels`, `OllamaClient`, `Prompts` | The local assistant |
 | `Migration/` | `MigrationAccess`, `MigrationModel` | `BrowserReaders`, `MigrationEngine`, `MigrationModels`, `SQLiteReader` | Importing from Chrome, Safari, Arc, Dia and Zen |
 | `Session/` | — | `FormDrafts` | Typed-text recovery |
+| `Tabs/` | — | `SplitGroup`, `TabCollection`, `TabModel` (with `Space`, `TabSession`, `TabSessionStore`, `TabSleepPolicy`) | Tab, space, split and session rules shared with iOS; `Browser/SpaceCompat.swift` keeps the Mac's `color` name for `Space` and builds a `TabModel` from a `Tab` |
 | `Support/` | `Clipboard`, `CodeIntegrity`, `SessionStore` | `AddressCompletion`, `AppPaths`, `Bookmarks`, `CertificatePinning`, `History`, `JSONValue`, `LinkTracking`, `Log`, `Preferences`, `Sanitize`, `SearchSuggestions`, `SecureStorage`, `SiteSettings`, `WebOrigin` | Encryption and storage, settings, address completion and search suggestions, paths, integrity, pinning, sanitizing, logging |
 
 ## Benchmarks
@@ -356,7 +357,7 @@ make hooks      # run the security lint before every commit in this clone
 
 **The self-test** (`Lily --self-test`, also run on the packaged app in CI) boots the real app and checks, in WebKit: the injection runtime and its host guard, page events and history, `dom.extract`, procedural filters, the download animation, typed-text recovery (draft kept, card field and query string not, restore offered and applied), Link Scrolling (a 12,000 px pane follows a 6,000 px one to the same fraction), paused panes (animation frames stop), Little Lily (Open in Lily keeps the same page, typed text and scroll position, and its messages reach the main window), find in page, tab drag and drop, the native pinned tiles (rendered, AppKit drag pasteboard, drop lands in the gap), web developer features matching the setting, the trimmed menu bar, the command palette against the live menus, internal pages without scripts, migration inside the sandbox, page-world isolation, the assistant, and encrypted session storage. `LILY_SELFTEST_NETWORK=1` adds live checks of HTTPS-First and certificate pinning. It prints a JSON report and exits non-zero on failure.
 
-**Tests** (`core/Tests/LilyCoreTests/`, Swift Testing, about 290 tests; the 47 tests of the shared code run in LilyKit) cover each area by file name: the command bar's completion and suggestions (`CommandBarSuggestionsTests`), tabs and spaces (`SpacesTests`, `WorkspaceTests`, `SplitViewTests`, `ScrollLinkTests`, `TabSleepTests`, `PaneFreezerTests`, `TabManagerPerformanceTests`), IPC and payloads (`CoreTests`, `InjectionAuditTests`), storage and privacy (`HistoryTests`, `FormDraftsTests`, `SiteSettingsTests`, `ThreatHardeningTests`, `SecurityReviewTests`, `SecurityStandardsTests`), extensions (`ExtensionTests`, `ExtensionPackageTests`, `ExtensionRuntimeTests`, `ExtensionCompatTests`, `ChromeWebStoreTests`), the command palette, ad blocking, migration, downloads, the link menu, platform controls and the assistant.
+**Tests** (`core/Tests/LilyCoreTests/`, Swift Testing, about 300 tests; the 84 tests of the shared code, including the tab model, run in LilyKit) cover each area by file name: the command bar's completion and suggestions (`CommandBarSuggestionsTests`), tabs and spaces (`SpacesTests`, `WorkspaceTests`, `SplitViewTests`, `ScrollLinkTests`, `TabSleepTests`, `PaneFreezerTests`, `TabManagerPerformanceTests`), IPC and payloads (`CoreTests`, `InjectionAuditTests`), storage and privacy (`HistoryTests`, `FormDraftsTests`, `SiteSettingsTests`, `ThreatHardeningTests`, `SecurityReviewTests`, `SecurityStandardsTests`), extensions (`ExtensionTests`, `ExtensionPackageTests`, `ExtensionRuntimeTests`, `ExtensionCompatTests`, `ChromeWebStoreTests`), the command palette, ad blocking, migration, downloads, the link menu, platform controls and the assistant.
 
 How to branch, open and merge pull requests (including stacked PRs), and cut releases is in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
