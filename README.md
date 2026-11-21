@@ -379,23 +379,13 @@ A checklist that matches how the existing features are built:
 
 What's not finished, what's deliberately unsupported, and what still needs a person to try. Please keep this list current.
 
-**Needs manual verification**
-- **Drag-and-drop gestures** (PR #48). Every drop is covered by the self-test, but the physical trackpad drags aren't: row onto a pinned tile, pinned tile into the list, row onto a space icon or split pill, a link from a page into the list, a row into another app (should paste the address), plain reordering still working, and the haptic taps.
-- **1Password autofill.** Sign-in, the vault in the popup and passkey sign-in are confirmed working (see Features). Not yet checked: filling saved passwords into login forms, the menu 1Password shows inside fields, and saving a new login.
-- The manual steps in the test plans of PRs #44–#48 (Separate logins with two accounts, ⌘K, restoring typed text after closing a tab, Link Scrolling, a pane pausing after 5 minutes, Add from Store).
+**Tracked as GitHub issues** (so this list stays short and current)
+- Manual checks nobody has done on a real build: drag-and-drop gestures ([#142](https://github.com/Lily-browser/Lily-macos/issues/142)), 1Password autofill ([#143](https://github.com/Lily-browser/Lily-macos/issues/143)), the open test-plan steps of PRs #44–#48 ([#144](https://github.com/Lily-browser/Lily-macos/issues/144)).
+- Developer ID signing, notarization, a team ID and 1Password desktop unlock wait on an Apple Developer Program membership (not bought yet): [#145](https://github.com/Lily-browser/Lily-macos/issues/145). Until then releases use the self-signed "Lily Release Signing" identity; hardened runtime is already on (`--options runtime,library,restrict`, enforced by `verify-app.sh`) and needs no membership.
+- Find in page shows a count, not "3 of 12" ([#146](https://github.com/Lily-browser/Lily-macos/issues/146)); `-Osize` would make the binary about 31% smaller but CLAUDE.md requires `-O` ([#147](https://github.com/Lily-browser/Lily-macos/issues/147)); more of the UI in AppKit ([#148](https://github.com/Lily-browser/Lily-macos/issues/148)); tab sleeping settings ([#139](https://github.com/Lily-browser/Lily-macos/issues/139)); downloads and macOS quarantine ([#137](https://github.com/Lily-browser/Lily-macos/issues/137)).
 
-**Not done yet**
-- **Optimizing for size.** `-Osize` would make the binary about 31% smaller (3.6 → 2.5 MB), but CLAUDE.md requires `-O` for release builds, so it stays `-O` until that rule changes.
-- **More of the UI in AppKit.** The pinned tiles are native; the rest of the sidebar, the command bar, Settings, History and the assistant are SwiftUI (the regular tab list is SwiftUI's `List`, which AppKit's table view backs).
+**Not done on purpose**
 - **Writing Tools** stays in the Edit menu: macOS adds it, with no supported way to leave it out.
-- **1Password desktop-app unlock** waits on an Apple Developer Program membership. 1Password's *Add browser* refuses Lily ("signed in an unsupported way or may be missing a required identifier") because builds are ad-hoc signed, with no team ID. With Developer ID signing, the next step is a native messaging host for 1Password's helper behind a setting that's off by default, and finding out whether the helper works when started from Lily's sandbox. Until then native messaging stays refused (below).
-
-**Planned: what the Apple Developer Program unlocks (not bought yet)**
-Hardened runtime is already on (`--options runtime,library,restrict`, enforced by `verify-app.sh`, no exceptions) and needs no membership. The paid account adds, in this order:
-1. **Developer ID signing + notarization** (CI secrets listed under [Releases](#releases)): no "Open Anyway" on first launch; notarization needs hardened runtime with no unjustified exceptions, which Lily already satisfies.
-2. **A team ID and a stable, Apple-anchored signature identity**: keeps the data key across updates without a self-made cert, and lets 1Password's *Add browser* accept Lily (native-messaging host work follows).
-3. **Provisioned entitlements**: the data-protection Keychain and, only if sync is approved, iCloud (see below).
-Until then releases use the self-signed "Lily Release Signing" identity.
 
 **Planned: sync between Macs (investigation only, nothing built; see [#102](https://github.com/Lily-browser/Lily-macos/issues/102))**
 Today nothing syncs: every store is a per-device sealed file and the key is `ThisDeviceOnly`. iCloud (CloudKit) needs a paid Apple Developer Program membership and a provisioned build, which the self-signed release identity can't provide, and it would change the "nothing leaves your Mac" promise. Action plan, each step gated on the owner's go-ahead:
@@ -414,12 +404,12 @@ Today nothing syncs: every store is a per-device sealed file and the key is `Thi
 - **Ad blocking** skips scriptlets (`+js`), redirects and rules WebKit can't express exactly.
 - **Separate logins** separate website data only: history, bookmarks, downloads and extensions (and their storage) are shared by all spaces.
 - **Typed-text recovery** covers textareas and rich-text editors in the main frame: not single-line inputs (by choice), and not editors inside iframes. A field is recognized by its id, name or position; when a page generates new ids each load, restoring works only when it's unambiguous (one draft, one empty field).
-- **Find in page** counts matches in the main frame's visible text, while WebKit searches every frame, so the count can differ on pages with iframes. It shows a count, not "3 of 12".
+- **Find in page** counts matches in the main frame's visible text, while WebKit searches every frame, so the count can differ on pages with iframes ([#146](https://github.com/Lily-browser/Lily-macos/issues/146)).
 - **Link Scrolling** aligns panes by the fraction scrolled, which matches identical layouts exactly and similar documents approximately.
 - **Paused panes** keep their memory (only CPU and rendering stop); the background-tab sleeper is what frees memory.
 - **Assistant** traffic to a local Ollama is plain HTTP on this Mac (see [Security](#security)).
 - **Importing** Safari, and Chrome on recent macOS, needs Full Disk Access for Lily.
-- **Ad-hoc builds** can't read Lily's saved data after a rebuild (session, history, extension list: the Keychain key is tied to the build); signed builds keep it. For local builds, a free Apple Development certificate is enough: `CODESIGN_IDENTITY="Apple Development: you@example.com (XXXXXXXXXX)" make app`.
+- **Ad-hoc builds** can't read Lily's saved data after a rebuild (session, history, extension list: the Keychain key is tied to the build); signed builds keep it. For local builds, a free Apple Development certificate is enough: `CODESIGN_IDENTITY="Apple Development: you@example.com (XXXXXXXXXX)" make app`. Switching between signing identities also loses that data, so replace a released install with a build signed by the same identity (the release identity, `CODESIGN_IDENTITY="Lily Release Signing"`, if you have it).
 
 ## Releases
 
