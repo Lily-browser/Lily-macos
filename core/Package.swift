@@ -9,7 +9,7 @@ let package = Package(
         .library(name: "LilyCore", targets: ["LilyCore"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/Lily-browser/LilyKit.git", exact: "0.3.2"),
+        .package(url: "https://github.com/Lily-browser/LilyKit.git", exact: "1.0.0"),
     ],
     targets: [
         .target(
