@@ -1,13 +1,13 @@
 {
-  "originHash" : "070dc0e47024ed7c28ad30d55f67f61ef9791c90be8a8101f23cf6d0155b3352",
+  "originHash" : "b5fed8fb2198732d150bc10143b8211e6656c7a23c95938e8069420f119543f2",
   "pins" : [
     {
       "identity" : "lilykit",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Lily-browser/LilyKit.git",
       "state" : {
-        "revision" : "64f8401f489a96bc37b8e3fe8b4855fd52f3803c",
-        "version" : "0.3.2"
+        "revision" : "00fb44c1c347376888920f937e6779fc67ee1a8e",
+        "version" : "1.0.0"
       }
     }
   ],

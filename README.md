@@ -8,7 +8,7 @@ Lily is written in Swift with AppKit and SwiftUI and renders pages with WebKit (
 
 > **Renamed from ArcClone.** Lily is a new app identity (`dev.lily.browser`): macOS gives it its own sandbox container and Keychain items, so it starts without ArcClone's session, history, bookmarks, extensions or website data. Re-import bookmarks and history with File → Import from Another Browser, then delete ArcClone.
 
-> **Status:** early development (0.x). Everything listed under [Features](#features) is implemented and covered by tests or the self-test; [Known issues and limitations](#known-issues-and-limitations) lists what isn't finished, what is deliberately not supported, and what still needs a human to try.
+> **Status:** 1.0. Everything listed under [Features](#features) is implemented and covered by tests or the self-test; [Known issues and limitations](#known-issues-and-limitations) lists what isn't finished, what is deliberately not supported, and what still needs a human to try.
 
 **Contents:** [Install](#install) · [Features](#features) · [Keyboard shortcuts](#keyboard-shortcuts) · [Privacy](#privacy) · [Security](#security) · [Architecture](#architecture) · [Where things are](#where-things-are) · [Development](#development) · [Adding a feature](#adding-a-feature) · [Known issues and limitations](#known-issues-and-limitations) · [Releases](#releases) · [License](#license)
 
