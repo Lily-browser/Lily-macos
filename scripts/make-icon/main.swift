@@ -5,8 +5,14 @@
 // copies of the 256 and 512 px images (about 220 KB); macOS picks an icon image by pixel size.
 import AppKit
 
+// `make-icon --foreground <out.png>` writes the lily alone (white, transparent), the layer of the
+// system-styled icon (scripts/Lily.icon) that macOS 26 renders in its Default, Dark, Clear and Tinted styles.
+if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--foreground" {
+    try AppIconArt.foregroundPNG().write(to: URL(fileURLWithPath: CommandLine.arguments[2]))
+    exit(0)
+}
 guard CommandLine.arguments.count == 2 else {
-    FileHandle.standardError.write(Data("usage: make-icon <out.icns>\n".utf8))
+    FileHandle.standardError.write(Data("usage: make-icon <out.icns> | make-icon --foreground <out.png>\n".utf8))
     exit(64)
 }
 let out = URL(fileURLWithPath: CommandLine.arguments[1])

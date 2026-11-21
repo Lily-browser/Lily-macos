@@ -48,6 +48,23 @@ trap 'rm -rf "${ICON_TMP:?}"' EXIT
 swiftc -O -o "$ICON_TMP/make-icon" "$ROOT/scripts/make-icon/main.swift" "$ROOT/core/Sources/LilyCore/UI/AppIconArt.swift"
 "$ICON_TMP/make-icon" "$OUT/Contents/Resources/AppIcon.icns"
 
+# macOS 26 icon styles (Default, Dark, Clear, Tinted): the same lily as an Icon Composer .icon, compiled
+# into Assets.car. Older systems use AppIcon.icns. Without actool the app still gets the plain icon.
+ICON_NAME_KEY=""
+mkdir -p "$ICON_TMP/Lily.icon/Assets"
+cp "$ROOT/scripts/Lily.icon/icon.json" "$ICON_TMP/Lily.icon/icon.json"
+"$ICON_TMP/make-icon" --foreground "$ICON_TMP/Lily.icon/Assets/lily.png"
+mkdir -p "$ICON_TMP/compiled"
+if xcrun actool "$ICON_TMP/Lily.icon" --compile "$ICON_TMP/compiled" --output-format human-readable-text --notices --warnings --errors \
+     --output-partial-info-plist "$ICON_TMP/compiled/partial.plist" --app-icon Lily --include-all-app-icons --enable-on-demand-resources NO \
+     --development-region en --target-device mac --minimum-deployment-target 26.0 --platform macosx > "$ICON_TMP/actool.log" 2>&1 \
+   && [ -f "$ICON_TMP/compiled/Assets.car" ]; then
+  cp "$ICON_TMP/compiled/Assets.car" "$OUT/Contents/Resources/Assets.car"
+  ICON_NAME_KEY="<key>CFBundleIconName</key><string>Lily</string>"
+else
+  echo "warning: actool could not build the system-styled icon; using AppIcon.icns only" >&2
+fi
+
 cat > "$OUT/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -59,6 +76,7 @@ cat > "$OUT/Contents/Info.plist" <<PLIST
   <key>CFBundleIdentifier</key><string>dev.lily.browser</string>
   <key>CFBundleExecutable</key><string>Lily</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
+  $ICON_NAME_KEY
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>$BUILD_NUMBER</string>

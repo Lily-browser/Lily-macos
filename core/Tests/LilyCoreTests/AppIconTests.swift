@@ -43,11 +43,16 @@ import Testing
 
     @Test func defaultLightDrawsNothingAndOthersFollowTheAppearance() {
         typealias C = AppIconController
-        #expect(C.choice(variant: .iris, matchesDarkMode: true, systemIsDark: false) == nil) // the bundle's own icon
-        #expect(C.choice(variant: .iris, matchesDarkMode: true, systemIsDark: true) == .init(variant: .iris, dark: true))
-        #expect(C.choice(variant: .iris, matchesDarkMode: false, systemIsDark: true) == nil)
-        #expect(C.choice(variant: .rose, matchesDarkMode: true, systemIsDark: false) == .init(variant: .rose, dark: false))
-        #expect(C.choice(variant: .rose, matchesDarkMode: true, systemIsDark: true) == .init(variant: .rose, dark: true))
-        #expect(C.choice(variant: .rose, matchesDarkMode: false, systemIsDark: true) == .init(variant: .rose, dark: false))
+        // Before macOS 26 the default icon draws its own dark rendering in the Dock.
+        #expect(C.choice(variant: .iris, matchesDarkMode: true, systemIsDark: false, systemStylesBundleIcon: false) == nil) // the bundle's own icon
+        #expect(C.choice(variant: .iris, matchesDarkMode: true, systemIsDark: true, systemStylesBundleIcon: false) == .init(variant: .iris, dark: true))
+        #expect(C.choice(variant: .iris, matchesDarkMode: false, systemIsDark: true, systemStylesBundleIcon: false) == nil)
+        // On macOS 26 the system styles the bundle's icon (dark, clear, tinted), so the default never overrides it.
+        #expect(C.choice(variant: .iris, matchesDarkMode: true, systemIsDark: true, systemStylesBundleIcon: true) == nil)
+        for styled in [false, true] {
+            #expect(C.choice(variant: .rose, matchesDarkMode: true, systemIsDark: false, systemStylesBundleIcon: styled) == .init(variant: .rose, dark: false))
+            #expect(C.choice(variant: .rose, matchesDarkMode: true, systemIsDark: true, systemStylesBundleIcon: styled) == .init(variant: .rose, dark: true))
+            #expect(C.choice(variant: .rose, matchesDarkMode: false, systemIsDark: true, systemStylesBundleIcon: styled) == .init(variant: .rose, dark: false))
+        }
     }
 }
