@@ -181,7 +181,7 @@ private struct TabListView: View {
     var body: some View {
         let row = SidebarRowStyle(textSize: SidebarTextSize(stored: storedTextSize), density: TabDensity(stored: density),
                                        closeButton: CloseButtonVisibility(stored: closeButton), dimsSleepingTabs: dimSleeping)
-        List {
+        List(selection: Binding<UUID?>(get: { window.activeID }, set: { if let id = $0, id != window.activeID { window.activate(id) } })) {
             if !window.pinnedTabs.isEmpty {
                 PinnedTabsGrid(window: window, tabs: window.pinnedTabs, activeID: window.activeID, accent: accent,
                                columns: PinnedColumns.clamped(pinnedColumns))
@@ -194,6 +194,7 @@ private struct TabListView: View {
                     switch item {
                     case .tab(let tab):
                         TabRow(tab: tab, window: window, row: row)
+                            .tag(tab.id)
                             .listRowBackground(ActiveRowBackground(active: tab.id == window.activeID))
                             // Reordering stays with onMove; this lets the row also be dropped on a
                             // pinned tile, a space or a split, or into another app as its address.
@@ -315,7 +316,8 @@ private struct TabRow: View {
         }
         .frame(height: row.rowHeight)
         .contentShape(Rectangle())
-        .onTapGesture { window.activate(tab.id) }
+        // No tap gesture here: a gesture that handles the mouse-down stops the list from starting a drag, so a
+        // click selects the row (the list's selection activates the tab) and the drag keeps working.
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(window.activeID == tab.id ? [.isButton, .isSelected] : .isButton)
         .onHover { hovering = $0 }

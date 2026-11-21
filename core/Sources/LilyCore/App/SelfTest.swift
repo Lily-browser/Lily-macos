@@ -631,6 +631,51 @@ enum SelfTest {
                 }
             }
 
+            if ProcessInfo.processInfo.environment["LILY_SELFTEST_DRAG"] != nil {
+                // Four tabs with their own titles, then a real drag of the first row down past the third.
+                var ids: [UUID] = []
+                for name in ["DragA", "DragB", "DragC", "DragD"] {
+                    let t = window.tabs.create(url: nil, activate: false)
+                    t.showInternalPage("<!doctype html><title>\(name)</title>", for: nil)
+                    ids.append(t.id)
+                }
+                window.window?.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+                try? await Task.sleep(for: .milliseconds(1500))
+                var seenEvents: [String: Int] = [:]
+                let monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]) { event in
+                    seenEvents["\(event.type.rawValue)", default: 0] += 1
+                    return event
+                }
+                defer { if let monitor { NSEvent.removeMonitor(monitor) } }
+                @MainActor func order() -> [String] { window.tabs.tabs.map { $0.title }.filter { $0.hasPrefix("Drag") } }
+                let before = order() // new tabs go next to the active one, so this is D, C, B, A
+                var after = before
+                var detail: [String: JSONValue] = [:]
+                if let content = window.window?.contentView, let table = DragHarness.list(in: content) {
+                    // The list's rows are: pinned grid and header rows, then the regular items, then the New Tab row.
+                    let regular = window.model.regularItems.count
+                    let offset = table.numberOfRows - regular - 1
+                    @MainActor func row(of title: String) -> Int? {
+                        window.model.regularItems.firstIndex { if case .tab(let t) = $0 { return t.title == title } else { return false } }.map { $0 + offset }
+                    }
+                    if let a = row(of: "DragA").flatMap({ DragHarness.frame(ofRow: $0, in: table) }),
+                       let c = row(of: "DragC").flatMap({ DragHarness.frame(ofRow: $0, in: table) }) {
+                        detail["from"] = .string("\(Int(a.midX)),\(Int(a.midY))"); detail["to"] = .string("\(Int(c.midX)),\(Int(c.minY))")
+                        await DragHarness.click(CGPoint(x: a.midX, y: a.midY))
+                        detail["clickSelectsRow"] = .bool(window.tabs.active?.title == "DragA")
+                        // A is the last of the four; drop it on the upper edge of C: it should land between D and C.
+                        await DragHarness.drag(from: CGPoint(x: a.midX, y: a.midY), to: CGPoint(x: c.midX, y: c.minY + 2))
+                        let started = Date(); for _ in 0..<200 where order() == before { try? await Task.sleep(for: .milliseconds(100)) }; detail["settledAfterSeconds"] = .number(Date().timeIntervalSince(started)) // the drop settles asynchronously
+                        after = order()
+                    }
+                }
+                detail["events"] = .object(seenEvents.mapValues { JSONValue.number(Double($0)) })
+                detail["before"] = .array(before.map(JSONValue.string)); detail["after"] = .array(after.map(JSONValue.string))
+                check("drag a sidebar row to reorder", after == ["DragD", "DragA", "DragC", "DragB"], .object(detail))
+                ids.forEach { window.tabs.close($0) }
+            }
+
             report["result"] = .string(failures.isEmpty ? "pass" : "fail")
             // The report is the self-test's output (stdout), not a log.
             FileHandle.standardOutput.write(Data((JSONValue.object(report).jsonString() + "\n").utf8))
