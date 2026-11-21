@@ -138,7 +138,8 @@ public final class WebViewFactory {
         config.preferences.minimumFontSize = 9
         // Hosts known to support HTTPS are upgraded by WebKit before any request goes out.
         config.upgradeKnownHostsToHTTPS = true
-        // Safe Browsing: on unless turned off in Settings → Privacy (only hashed address prefixes are sent).
+        // Safe Browsing is requested (Settings → Privacy), but the sandbox blocks WebKit's lookup service, so it fails open and shows
+        // no warnings (#163). Don't present it as protection until that is solved.
         config.preferences.isFraudulentWebsiteWarningEnabled = Preferences.warnsAboutFraudulentSites
         // Pages that aren't visible (background tabs) have their timers and rendering suspended.
         config.preferences.inactiveSchedulingPolicy = .suspend
