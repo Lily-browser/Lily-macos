@@ -273,6 +273,8 @@ private struct SplitPill: View {
                 .fill(focused ? AnyShapeStyle(Color(hex: accent).opacity(0.3)) : AnyShapeStyle(.background.opacity(0.35))))
             .contentShape(Rectangle())
             .onTapGesture { window.activate(tab.id) }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(focused ? [.isButton, .isSelected] : .isButton)
             .help(tab.title)
             .contextMenu { TabContextMenu(tab: tab, window: window) }
         }
@@ -303,16 +305,19 @@ private struct TabRow: View {
                 .help(tab.isSleeping ? "Sleeping to save memory. Opens where you left off." : tab.title)
             Spacer(minLength: 0)
             if tab.inSplit {
-                Image(systemName: "rectangle.split.2x1").font(.system(size: 10)).foregroundStyle(.tint).help("In Split View")
+                Image(systemName: "rectangle.split.2x1").font(.system(size: 10)).foregroundStyle(.tint).help("In Split View").accessibilityLabel("In Split View")
             }
             if row.closeButton.shows(hovering: hovering) && !tab.isPinned {
                 Button { window.close(tab.id) } label: { Image(systemName: "xmark").font(.system(size: 10, weight: .bold)) }
+                    .accessibilityLabel("Close Tab")
                     .buttonStyle(.plain).foregroundStyle(.secondary).help("Close Tab (⌘W)")
             }
         }
         .frame(height: row.rowHeight)
         .contentShape(Rectangle())
         .onTapGesture { window.activate(tab.id) }
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(window.activeID == tab.id ? [.isButton, .isSelected] : .isButton)
         .onHover { hovering = $0 }
         // One sleep, cancelled when the pointer leaves: no timer runs unless a row is hovered.
         .task(id: hovering) {
@@ -462,6 +467,7 @@ private struct SpaceHeader: View {
                 Button(role: .destructive) { window.deleteSpace(space.id) } label: { Label("Delete Space and Its Tabs", systemImage: "trash") }
                     .disabled(window.spaces.count < 2)
             } label: { Image(systemName: "ellipsis") }
+                .accessibilityLabel("Space Options")
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
         }
         .padding(.horizontal, 16).padding(.vertical, 4)

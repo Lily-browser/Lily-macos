@@ -34,11 +34,11 @@ struct SiteSettingsView: View {
                     Text("Zoom").foregroundStyle(.secondary)
                     HStack(spacing: 6) {
                         // ⌘− / ⌘+'s steps (SiteSettings.zoomLevels).
-                        Button { controller?.zoomOut(nil); readZoom() } label: { Image(systemName: "minus") }
+                        Button { controller?.zoomOut(nil); readZoom() } label: { Image(systemName: "minus") }.accessibilityLabel("Zoom Out")
                             .disabled(zoom <= SiteSettings.zoomLevels[0] + 0.005)
                         Text("\(Int((zoom * 100).rounded()))%")
                             .monospacedDigit().frame(minWidth: 44)
-                        Button { controller?.zoomIn(nil); readZoom() } label: { Image(systemName: "plus") }
+                        Button { controller?.zoomIn(nil); readZoom() } label: { Image(systemName: "plus") }.accessibilityLabel("Zoom In")
                             .disabled(zoom >= SiteSettings.zoomLevels[SiteSettings.zoomLevels.count - 1] - 0.005)
                         Button("Reset") { controller?.actualSize(nil); readZoom() }.buttonStyle(.link)
                     }

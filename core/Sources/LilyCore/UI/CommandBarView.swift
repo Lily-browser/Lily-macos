@@ -435,6 +435,7 @@ private struct CommandBarCard: View {
                     .frame(maxWidth: .infinity)
                 if !bar.query.isEmpty {
                     Button { bar.query = "" } label: { Image(systemName: "xmark.circle.fill") }
+                        .accessibilityLabel("Clear")
                         .buttonStyle(.plain).foregroundStyle(.tertiary)
                 }
             }
@@ -451,6 +452,7 @@ private struct CommandBarCard: View {
                                 SuggestionRow(suggestion: suggestion, selected: index == bar.selection)
                                     .contentShape(Rectangle())
                                     .onTapGesture { bar.commit(suggestion) }
+                                    .accessibilityAddTraits(index == bar.selection ? [.isButton, .isSelected] : .isButton)
                                     .onHover { if $0 { bar.selection = index } }
                                     .id(index)
                             }
