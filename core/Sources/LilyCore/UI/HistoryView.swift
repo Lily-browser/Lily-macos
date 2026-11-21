@@ -237,9 +237,9 @@ private struct HistoryRow: View {
             }
             Spacer(minLength: 12)
             if hovering {
-                Button { open(visit.url, true) } label: { Image(systemName: "arrow.up.right.square") }
+                Button { open(visit.url, true) } label: { Image(systemName: "arrow.up.right.square") }.accessibilityLabel("Open in New Tab")
                     .buttonStyle(.borderless).help("Open in New Tab")
-                Button(action: delete) { Image(systemName: "xmark.circle.fill") }
+                Button(action: delete) { Image(systemName: "xmark.circle.fill") }.accessibilityLabel("Remove from History")
                     .buttonStyle(.borderless).foregroundStyle(.secondary).help("Delete from History")
             }
             Text(visit.visitedAt, format: .dateTime.hour().minute())

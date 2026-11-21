@@ -123,12 +123,16 @@ struct SidebarBackground: View {
     private var tint: String { spaceColor ?? storedTint }
     @AppStorage(AppearanceStyle.Key.tintStrength) private var strength = 0.12
     @AppStorage(AppearanceStyle.Key.grain) private var grain = 0.0
+    /// Increase Contrast turns the decorative tint and grain off, so the sidebar text sits on the plain system material.
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
         ZStack {
+            if contrast != .increased {
             LinearGradient(colors: [Color(hex: tint).opacity(strength), Color(hex: tint).opacity(strength * 0.55)],
                            startPoint: .top, endPoint: .bottom)
-            if grain > 0.001 {
+            }
+            if grain > 0.001, contrast != .increased {
                 Image(nsImage: GrainTexture.image)
                     .resizable(resizingMode: .tile)
                     .blendMode(.overlay)
