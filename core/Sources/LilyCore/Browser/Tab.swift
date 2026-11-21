@@ -487,6 +487,16 @@ extension Tab: WKNavigationDelegate {
             Task { [weak self] in self?.webView.load(URLRequest(url: clean)) }
             return (.cancel, preferences)
         }
+        // A sensitive site (a bank) is loaded over HTTPS only: no "allowed over HTTP" exception ever applies to it.
+        if let url = navigationAction.request.url, navigationAction.targetFrame?.isMainFrame ?? true, url.scheme?.lowercased() == "http",
+           siteSettings?.isSensitive(url) == true, var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+            parts.scheme = "https"
+            if parts.port == 80 { parts.port = nil }
+            if let secure = parts.url {
+                Task { [weak self] in self?.webView.load(URLRequest(url: secure)) }
+                return (.cancel, preferences)
+            }
+        }
         if let url = navigationAction.request.url, navigationAction.targetFrame?.isMainFrame ?? true,
            (navigationAction.request.httpMethod ?? "GET") == "GET", navigationAction.navigationType != .backForward,
            url.scheme?.lowercased() == "http", let host = url.host?.lowercased() {

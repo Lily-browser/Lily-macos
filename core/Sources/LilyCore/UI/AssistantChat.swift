@@ -77,6 +77,7 @@ public final class AssistantChat {
         messages.append(Message(id: UUID().uuidString, role: .user, content: isVideo ? "Summarize this video" : "Summarize this page", isAction: true))
         start { window in
             guard let tab = window.tabs.active else { throw IPCError.notFound("No active tab") }
+            guard !window.isSensitive(tab.url) else { throw IPCError.notFound("The assistant doesn't read pages on sensitive sites") }
             if tab.youtubeVideoID != nil {
                 var request = AssistantRequest(task: .summarizeVideo)
                 request.transcript = try await tab.callInjection("youtube.transcript", [:], timeout: 30).decode(Transcript.self)
@@ -94,7 +95,9 @@ public final class AssistantChat {
         messages.append(Message(id: UUID().uuidString, role: .user, content: "Explain: “\(preview)”", isAction: true))
         start { window in
             var request = AssistantRequest(task: .explainSelection, selection: selection)
-            request.page = try? await window.tabs.active?.callInjection("dom.extract", ["maxChars": 20000]).decode(PageContent.self)
+            if !window.isSensitive(window.tabs.active?.url) {
+                request.page = try? await window.tabs.active?.callInjection("dom.extract", ["maxChars": 20000]).decode(PageContent.self)
+            }
             return request
         }
     }

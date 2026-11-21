@@ -397,6 +397,16 @@ public final class BrowserWindowController: NSWindowController, NSWindowDelegate
         Task { await sleeper?.sweep(force: true) }
     }
 
+    /// Settings → Websites → a site marked sensitive (a bank): nothing is kept about it and its content stays out of the assistant.
+    func isSensitive(_ url: URL?) -> Bool { factory.siteSettings?.isSensitive(url) ?? false }
+
+    /// A sensitive page keeps the window out of screenshots, screen recording and sharing while it is the one showing
+    /// (private windows always do; macOS honours the request as far as it can).
+    func updateSharingType() {
+        guard !isPrivate else { return }
+        window?.sharingType = isSensitive(tabs.active?.url) ? .none : .readOnly
+    }
+
     private func showTab(_ tab: Tab?) {
         // Every pane of a visible split must be awake.
         if let tab, let split = tabs.split, split.tabIDs.contains(tab.id) { split.tabIDs.compactMap(tabs.tab).forEach { $0.wake() } }
@@ -405,6 +415,7 @@ public final class BrowserWindowController: NSWindowController, NSWindowDelegate
         find.activeTabChanged()
         window?.makeFirstResponder(tab?.webView)
         model.selection = tab?.lastSelection
+        updateSharingType()
     }
 
     /// Edit → Find…, Find Next, Find Previous; the item's tag is the NSTextFinder.Action.

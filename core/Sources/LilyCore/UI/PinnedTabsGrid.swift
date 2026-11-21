@@ -137,7 +137,7 @@ final class PinnedTabsView: NSView, NSCollectionViewDelegate {
     }
 
     private func configure(_ tile: PinnedTileItem, _ tab: WindowModel.TabItem) {
-        tile.configure(tab, active: tab.id == activeID, accent: accent, remember: !model.isPrivate) { [weak self] in
+        tile.configure(tab, active: tab.id == activeID, accent: accent, remember: !model.isPrivate && !model.isSensitive(tab.url)) { [weak self] in
             guard let self, let current = self.tabs[tab.id] else { return nil }
             return TabMenu.menu(for: current, window: self.model)
         }

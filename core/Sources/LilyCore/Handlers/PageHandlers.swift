@@ -13,8 +13,10 @@ extension BrowserWindowController {
             guard !ErrorPage.isInternal(metadata.url) else { return .null } // Lily's own pages aren't history
             tab.applyMetadata(metadata)
             if tabID == self.tabs.activeID { self.model.selection = tab.lastSelection } // cleared on commit
-            self.history?.record(url: metadata.url, title: metadata.title)
-            self.offerFormRestore(tab)
+            let sensitive = self.isSensitive(metadata.url)
+            if !sensitive { self.history?.record(url: metadata.url, title: metadata.title) } // nothing is kept about a sensitive site
+            if tabID == self.tabs.activeID { self.updateSharingType() }
+            if !sensitive { self.offerFormRestore(tab) }
             // A navigation resets the page's scripts; a pane of a linked split links again.
             if self.scrollLinkedTabs.contains(tabID) { self.setScrollLink(true, in: tab) }
             self.recordForAssistant(tabID, "page.didChange", metadata.json)
@@ -44,6 +46,7 @@ extension BrowserWindowController {
         router.on("form.snapshot", from: pageOnly, as: PagePayload.FormSnapshot.self) { [weak self] ctx, p in
             guard let drafts = self?.formDrafts, case .page(_, true, let origin) = ctx.source else { return .null }
             let url = try PagePayload.sameOrigin(p.url, origin: origin)
+            guard !(self?.isSensitive(url) ?? false) else { return .null } // typed text on a sensitive site is never kept
             let draft = try PagePayload.formDraft(field: p.field, text: p.text)
             drafts.save(page: url, field: draft.field, text: draft.text)
             return .null
@@ -95,7 +98,7 @@ extension BrowserWindowController {
 
     /// Private windows leave no trace in the assistant's context.
     private func recordForAssistant(_ tabID: UUID, _ type: String, _ payload: JSONValue) {
-        guard !isPrivate else { return }
+        guard !isPrivate, !isSensitive(tabs.tab(tabID)?.url) else { return }
         assistant.context.ingest(tabID: tabID, type: type, payload: payload)
     }
 }

@@ -160,6 +160,8 @@ public final class WindowModel {
     // MARK: Tab actions (forwarded to the controller)
 
     func activate(_ id: UUID) { controller?.tabs.activate(id) }
+    /// A site marked sensitive (Site settings): no history, drafts or kept icons.
+    func isSensitive(_ url: URL?) -> Bool { controller?.isSensitive(url) ?? false }
 
     /// What the hover preview shows: read on demand, so a sleeping tab stays asleep.
     struct TabPreview { let isActive: Bool; let isSleeping: Bool; let memory: UInt64? }

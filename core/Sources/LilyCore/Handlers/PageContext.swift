@@ -4,7 +4,7 @@ extension BrowserWindowController {
     /// Collects page text, transcript and selection from the active tab for the assistant.
     /// Failures degrade to less context rather than failing the request.
     func gatherContext(includePage: Bool, includeSelection: Bool) async -> (page: PageContent?, transcript: Transcript?, selection: String?) {
-        guard let tab = tabs.active else { return (nil, nil, nil) }
+        guard let tab = tabs.active, !isSensitive(tab.url) else { return (nil, nil, nil) } // the assistant never reads a sensitive site
         var page: PageContent?
         var transcript: Transcript?
         if includePage, tab.url?.scheme == "http" || tab.url?.scheme == "https" {

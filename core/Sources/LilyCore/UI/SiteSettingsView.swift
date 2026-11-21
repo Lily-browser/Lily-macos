@@ -70,6 +70,16 @@ struct SiteSettingsView: View {
                     .disabled(isPrivate)
                 }
                 GridRow {
+                    Text("Sensitive").foregroundStyle(.secondary)
+                    Toggle("Bank or other sensitive site", isOn: Binding(get: { settings.isSensitive(url) }, set: { on in
+                        guard !isPrivate else { return }
+                        settings.update(url) { $0.sensitive = on ? true : nil }
+                        controller?.updateSharingType()
+                    }))
+                    .disabled(isPrivate)
+                    .help("Keeps no history, typed-text drafts or site icon for this site and its subdomains, hides the window from screenshots and screen sharing while it's open, loads it only over HTTPS, and never shows it to the assistant.")
+                }
+                GridRow {
                     Text("Camera").foregroundStyle(.secondary)
                     permissionPicker(\.camera)
                 }
