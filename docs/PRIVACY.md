@@ -21,7 +21,7 @@ backups.
 | History: page addresses, titles, times | yes | 90 days by default (Settings → Privacy → Keep history), at most 20,000 visits | Clear Browsing Data; History → Clear; *Clear history when Lily quits*; deleting visits |
 | Site icons, one small image per site you visited | yes (site names too) | while the site is in history; at most 600 | anything that removes the history it came from |
 | Typed text in long fields (comments, posts, messages) | yes | 24 hours; until the form is sent or the field emptied | Clear Browsing Data; *Clear history when Lily quits* |
-| Site settings (zoom, dark mode, JavaScript, camera, microphone, ads), per site | yes | until you change them | Site Settings → Clear; Clear Browsing Data (*Also forget site settings*, on by default) |
+| Site settings (zoom, dark mode, JavaScript, camera, microphone, ads, *sensitive site*), per site | yes | until you change them | Site Settings → Clear; Clear Browsing Data (*Also forget site settings*, on by default) |
 | Bookmarks (imported) | yes | until removed | Bookmarks → Remove All Bookmarks |
 | Installed extensions and their storage | yes | until removed | Settings → Extensions |
 | Cookies, site storage, caches | by WebKit, not by Lily (FileVault protects them on disk) | as sites set them | Clear Browsing Data; *Clear cookies and website data when Lily quits*; per site in Site Settings |
@@ -87,3 +87,7 @@ Honest limits, so you can decide for yourself:
 - **macOS's own quarantine log** may keep a system-wide record of downloads that Lily can't edit. The file-level scrub described above is verified by tests run outside the sandbox.
 - **Extensions** run with the permissions you approved and handle data their own way. Lily audits their code before installing; see [EXTENSIONS.md](EXTENSIONS.md).
 - **Filter-list maintainers** see your IP address once a week for each list you turn on.
+
+## Sensitive sites
+
+Marking a site sensitive (Site settings → *Bank or other sensitive site*; its subdomains are covered) tells Lily to keep nothing about it: no history entry, no typed-text draft, no kept site icon, and its pages are never read for the assistant. While such a page is showing, the window is hidden from screenshots, screen recording and screen sharing (as far as macOS honours that), and the site only loads over HTTPS. What the site itself does in the page (cookies, its own storage) is not changed, and extensions still run on it (turning them off per site is planned, [#154](https://github.com/Lily-browser/Lily-macos/issues/154)).

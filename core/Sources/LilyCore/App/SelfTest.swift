@@ -538,6 +538,28 @@ enum SelfTest {
             check("⌘W closes the command bar first", window.model.commandBar == nil && window.tabs.tabs.count == tabsBefore && window.tabs.activeID == activeBefore,
                   ["bar": .bool(window.model.commandBar != nil), "tabs": .number(Double(window.tabs.tabs.count)), "before": .number(Double(tabsBefore))])
 
+            // A site marked sensitive (a bank): nothing typed is kept as a draft, nothing is added to history, the window is hidden
+            // from screen capture while it shows, and turning the mark off undoes that.
+            let bankURL = URL(string: "https://online.bank.selftest.lily.test/login")!
+            window.factory.siteSettings?.update(URL(string: "https://bank.selftest.lily.test/")) { $0.sensitive = true }
+            let bankTab = window.tabs.create(url: nil)
+            bankTab.webView.loadHTMLString(compose, baseURL: bankURL)
+            _ = await waitUntil(10) { bankTab.title == "Compose" }
+            _ = try? await bankTab.webView.evaluateJavaScript("""
+            const field = document.getElementById('body'); field.value = 'secret reply that must not be kept';
+            field.dispatchEvent(new InputEvent('input', { bubbles: true }));
+            """)
+            try? await Task.sleep(for: .milliseconds(1500))
+            let noDraft = window.formDrafts?.drafts(for: bankURL).isEmpty ?? true
+            let noHistory = !(window.history?.visits.contains { $0.url.host?.hasSuffix("bank.selftest.lily.test") == true } ?? false)
+            let hidden = window.window?.sharingType == NSWindow.SharingType.none
+            window.factory.siteSettings?.update(URL(string: "https://bank.selftest.lily.test/")) { $0.sensitive = nil }
+            window.updateSharingType()
+            let shownAgain = window.window?.sharingType == .readOnly
+            check("sensitive sites keep nothing", noDraft && noHistory && hidden && shownAgain,
+                  ["noDraft": .bool(noDraft), "noHistory": .bool(noHistory), "hiddenFromCapture": .bool(hidden), "shownAgain": .bool(shownAgain)])
+            window.tabs.close(bankTab.id)
+
             // Lily's own pages run without page JavaScript, keep the tab's address and stay out of history.
             let internalTab = window.tabs.create(url: nil, activate: false)
             internalTab.showInternalPage("<!doctype html><title>internal</title><script>document.title = 'scripts ran'</script>", for: nil)
