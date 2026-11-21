@@ -35,6 +35,8 @@ public final class BrowserWindowController: NSWindowController, NSWindowDelegate
     /// The next check for split panes to pause (PaneFreezer); one wake-up, never polling.
     var freezeTask: Task<Void, Never>?
     private var overlayHost: NSHostingView<CommandBarOverlay>?
+    /// The window's root, which the command bar's overlay is added to only while the bar is up.
+    private var rootController: RootViewController?
     private let windowToolbar: WindowToolbar
     private weak var sidebarHost: NSView?
     private var swipeMonitor: Any?
@@ -338,7 +340,7 @@ public final class BrowserWindowController: NSWindowController, NSWindowDelegate
         let root = RootViewController(content: splitController)
         let overlay = NSHostingView(rootView: CommandBarOverlay(window: model))
         overlay.isHidden = true
-        root.addOverlay(overlay)
+        rootController = root // the overlay is attached while the command bar is up (see observeCommandBar)
         overlayHost = overlay
         window?.contentViewController = root
         window?.setContentSize(NSSize(width: 1320, height: 860))
@@ -355,7 +357,7 @@ public final class BrowserWindowController: NSWindowController, NSWindowDelegate
         let root = RootViewController(content: contentController)
         let overlay = NSHostingView(rootView: CommandBarOverlay(window: model))
         overlay.isHidden = true
-        root.addOverlay(overlay)
+        rootController = root
         overlayHost = overlay
         window?.contentViewController = root
         window?.setContentSize(NSSize(width: 900, height: 640))
@@ -368,10 +370,16 @@ public final class BrowserWindowController: NSWindowController, NSWindowDelegate
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 if self.model.commandBar != nil {
+                    // A full-window SwiftUI view above the page made WebKit's picture of the page (for the back/forward swipe)
+                    // come out gray, so it is in the window only while the command bar is showing.
+                    if let overlay = self.overlayHost { self.rootController?.attachOverlay(overlay) }
                     self.overlayHost?.isHidden = false
                 } else {
                     try? await Task.sleep(for: .milliseconds(280))
-                    if self.model.commandBar == nil { self.overlayHost?.isHidden = true }
+                    if self.model.commandBar == nil {
+                        self.overlayHost?.isHidden = true
+                        self.overlayHost?.removeFromSuperview()
+                    }
                 }
                 self.observeCommandBar()
             }
@@ -640,7 +648,8 @@ final class RootViewController: NSViewController {
         view = root
     }
 
-    func addOverlay(_ overlay: NSView) {
+    func attachOverlay(_ overlay: NSView) {
+        guard overlay.superview == nil else { return }
         overlay.frame = view.bounds
         overlay.autoresizingMask = [.width, .height]
         view.addSubview(overlay, positioned: .above, relativeTo: nil)
