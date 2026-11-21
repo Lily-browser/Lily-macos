@@ -33,7 +33,8 @@ enum TabDrag {
     /// apps, its web address.
     @MainActor
     static func provider(for tab: WindowModel.TabItem) -> NSItemProvider {
-        Haptics.tap() // picked up
+        // No haptic here: SwiftUI evaluates `.itemProvider` on every press (and repeatedly), not
+        // only when a drag begins, so tapping a tab would buzz several times.
         let provider = tab.url.flatMap { url in url.scheme?.hasPrefix("http") == true ? NSItemProvider(object: url as NSURL) : nil } ?? NSItemProvider()
         let id = Data(tab.id.uuidString.utf8)
         provider.registerDataRepresentation(forTypeIdentifier: UTType.lilyTab.identifier, visibility: .ownProcess) { done in
