@@ -1,4 +1,5 @@
 import Foundation
+import LilyKit
 
 /// Puts unused background tabs to sleep to free memory and save energy. It doesn't poll: it waits
 /// until the earliest moment a background tab could have been idle long enough (with a wide timer
@@ -59,13 +60,11 @@ final class TabSleeper {
         return TimeInterval(minutes * 60)
     }
 
-    /// Whether a tab may sleep: not visible, not already asleep, a web page, idle long enough.
+    /// Whether a tab may sleep; the rule is LilyKit's, shared with Lily-ios.
     nonisolated static func isEligible(lastActivated: Date, now: Date, threshold: TimeInterval?, isActive: Bool, inSplit: Bool,
                                        isSleeping: Bool, scheme: String?, force: Bool) -> Bool {
-        guard !isActive, !inSplit, !isSleeping, scheme == "https" || scheme == "http" else { return false }
-        if force { return true }
-        guard let threshold else { return false }
-        return now.timeIntervalSince(lastActivated) >= threshold
+        TabSleepPolicy.isEligible(lastActivated: lastActivated, now: now, threshold: threshold, isActive: isActive, inSplit: inSplit,
+                                  isSleeping: isSleeping, scheme: scheme, force: force)
     }
 
     /// Whether a tab is playing media or capturing; tests replace it.

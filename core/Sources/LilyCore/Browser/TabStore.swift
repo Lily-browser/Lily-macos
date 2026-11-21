@@ -1,27 +1,5 @@
 import Foundation
-
-/// A named group of tabs (Arc's Spaces): each has its own pinned and regular tabs, icon and color.
-public struct Space: Codable, Identifiable, Equatable, Sendable {
-    public var id: UUID
-    public var name: String
-    public var symbol: String
-    public var color: String
-    /// Separate logins: the space's tabs have their own cookies, storage and cache, so you can be
-    /// signed in to a site with different accounts in different spaces. Optional so sessions
-    /// saved before it existed still decode.
-    public var separateLogins: Bool?
-    public var hasSeparateLogins: Bool { separateLogins ?? false }
-
-    public init(id: UUID = UUID(), name: String, symbol: String = "circle.fill", color: String = "#5B4CF5") {
-        self.id = id
-        self.name = name
-        self.symbol = symbol
-        self.color = color
-    }
-
-    static let symbols = ["circle.fill", "house.fill", "briefcase.fill", "book.fill", "gamecontroller.fill", "music.note",
-                          "paintbrush.fill", "graduationcap.fill", "cart.fill", "airplane", "heart.fill", "star.fill"]
-}
+import LilyKit
 
 /// Ordered tab collection for one window, divided into spaces. `tabs` holds every space's tabs;
 /// `visibleTabs` is the current space. Pinned tabs always sort before unpinned ones.
