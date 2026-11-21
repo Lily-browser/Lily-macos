@@ -40,6 +40,8 @@ extension BrowserWindowController: NSMenuItemValidation, NSToolbarItemValidation
     }
 
     @objc public func closeTab(_ sender: Any?) {
+        // ⌘W with the command bar open closes the bar, not the tab hidden behind it.
+        if model.commandBar != nil { return model.dismissCommandBar() }
         // Little Lily's page is the window: ⌘W closes it rather than leaving it empty.
         if isLittle { return window?.performClose(sender) ?? () }
         if let id = tabs.activeID { tabs.close(id) } else { window?.performClose(sender) }

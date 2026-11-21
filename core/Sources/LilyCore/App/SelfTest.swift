@@ -527,6 +527,13 @@ enum SelfTest {
                   && completedSelection == NSRange(location: 5, length: 13) && afterDelete == "selft" && topRow != nil,
                   ["ready": .bool(barReady), "completed": .string(completed), "afterDelete": .string(afterDelete)])
 
+            // ⌘W with the command bar open closes the bar and leaves the tab behind it alone.
+            let tabsBefore = window.tabs.tabs.count, activeBefore = window.tabs.activeID
+            window.model.presentCommandBar(newTab: true)
+            window.closeTab(nil)
+            check("⌘W closes the command bar first", window.model.commandBar == nil && window.tabs.tabs.count == tabsBefore && window.tabs.activeID == activeBefore,
+                  ["bar": .bool(window.model.commandBar != nil), "tabs": .number(Double(window.tabs.tabs.count)), "before": .number(Double(tabsBefore))])
+
             // Lily's own pages run without page JavaScript, keep the tab's address and stay out of history.
             let internalTab = window.tabs.create(url: nil, activate: false)
             internalTab.showInternalPage("<!doctype html><title>internal</title><script>document.title = 'scripts ran'</script>", for: nil)
