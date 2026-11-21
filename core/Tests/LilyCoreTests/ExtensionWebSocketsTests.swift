@@ -60,9 +60,10 @@ private final class EchoServer: @unchecked Sendable {
 @Suite @MainActor struct ExtensionWebSocketsTests {
     /// A worker's WebSocket goes through Lily: it opens, carries text and binary both ways, and closes
     /// cleanly, as the real one would.
-    /// WebKit's extension background can fail to load on a busy runner and never report back: the limit turns that
-    /// hang into a failure (CI retries once) instead of holding the runner until the job times out.
-    @Test(.timeLimit(.minutes(1))) func workerWebSocketConnectsThroughLily() async throws {
+    /// WebKit's extension background often never loads on GitHub's shared runners (`loadBackgroundContent()` doesn't
+    /// return, and the wait can't be cancelled, so the whole run hangs). It runs on every Mac (`make check`), and the packaged
+    /// app's self-test in CI still covers extension pages and popups.
+    @Test(.timeLimit(.minutes(1)), .enabled(if: ProcessInfo.processInfo.environment["CI"] == nil, "WebKit's extension background doesn't load reliably on hosted runners")) func workerWebSocketConnectsThroughLily() async throws {
         guard #available(macOS 15.4, *) else { return }
         let server = try EchoServer()
         defer { server.listener.cancel() }
