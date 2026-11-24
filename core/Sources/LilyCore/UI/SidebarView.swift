@@ -378,11 +378,11 @@ private struct NewTabRow: View {
             }
             .foregroundStyle(.secondary)
             .frame(height: row.rowHeight)
-            // Drawn a little past the content so it lines up with the active tab's highlight.
+            // Drawn past the content (which the list insets 16 pt) to the same inset and radius as the active tab's pill.
             .background {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                RoundedRectangle(cornerRadius: SidebarPill.radius, style: .continuous)
                     .fill(hovering ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear))
-                    .padding(.horizontal, -4)
+                    .padding(.horizontal, SidebarPill.inset - 16)
             }
             .contentShape(Rectangle())
         }
@@ -392,15 +392,24 @@ private struct NewTabRow: View {
     }
 }
 
-/// The active tab's highlight, in the user's accent color (Settings → Appearance).
+/// The shape of a sidebar row's pill (the list's own selection pill, measured on macOS 27 from a render). The self-test
+/// ("active tab is one pill") fails if a macOS release changes it and a differently colored strip shows.
+enum SidebarPill {
+    static let inset: CGFloat = 10
+    static let radius: CGFloat = 6
+}
+
+/// The active tab's highlight, in the user's accent color (Settings → Appearance). The list draws its own selection pill
+/// for the same row (inset 10 pt, corner radius ~6 pt, measured from a render); this one has exactly that shape, so the
+/// accent blends into it. At any other inset or radius it showed as a second, differently colored pill.
 private struct ActiveRowBackground: View {
     let active: Bool
     @AppStorage(AppearanceStyle.Key.accent) private var accent = AppearanceStyle.defaultAccent
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 7, style: .continuous)
+        RoundedRectangle(cornerRadius: SidebarPill.radius, style: .continuous)
             .fill(active ? Color(hex: accent).opacity(0.22) : .clear)
-            .padding(.horizontal, 6)
+            .padding(.horizontal, SidebarPill.inset)
             .animation(.smooth(duration: 0.15), value: active)
     }
 }
