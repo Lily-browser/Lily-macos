@@ -487,6 +487,14 @@ extension Tab: WKNavigationDelegate {
             Task { [weak self] in self?.webView.load(URLRequest(url: clean)) }
             return (.cancel, preferences)
         }
+        // An address that imitates another site (look-alike letters) needs a yes first, once per run.
+        if navigationAction.targetFrame?.isMainFrame ?? true, navigationAction.navigationType != .backForward,
+           let verdict = LookalikeWarning.verdict(for: navigationAction.request.url, from: url) {
+            guard await LookalikeWarning.confirm(verdict, in: webView.window) else {
+                Log.web.info("Look-alike address blocked (\(verdict.reason.rawValue, privacy: .public))")
+                return (.cancel, preferences)
+            }
+        }
         // A sensitive site (a bank) is loaded over HTTPS only: no "allowed over HTTP" exception ever applies to it.
         if let url = navigationAction.request.url, navigationAction.targetFrame?.isMainFrame ?? true, url.scheme?.lowercased() == "http",
            siteSettings?.isSensitive(url) == true, var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) {
