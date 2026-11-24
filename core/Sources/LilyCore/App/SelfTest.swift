@@ -709,6 +709,12 @@ enum SelfTest {
                 ids.forEach { window.tabs.close($0) }
             }
 
+            if let value = ProcessInfo.processInfo.environment["LILY_SELFTEST_PERF"] {
+                // Measurements of the real sidebar (#148), 5,000 tabs unless the variable is a number; they report, they don't gate.
+                let count = Int(value).map { min(max($0, 10), 20_000) } ?? 5000
+                check("sidebar measurements", true, .object(await PerfHarness.run(window: window, tabCount: count)))
+            }
+
             report["result"] = .string(failures.isEmpty ? "pass" : "fail")
             // The report is the self-test's output (stdout), not a log.
             FileHandle.standardOutput.write(Data((JSONValue.object(report).jsonString() + "\n").utf8))
