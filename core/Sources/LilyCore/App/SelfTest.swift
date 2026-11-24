@@ -714,6 +714,9 @@ enum SelfTest {
                 ids.forEach { window.tabs.close($0) }
             }
 
+            let pill = await PillProbe.run(window: window)
+            check("active tab is one pill", pill.ok, pill.detail)
+
             if let value = ProcessInfo.processInfo.environment["LILY_SELFTEST_PERF"] {
                 // Measurements of the real sidebar (#148), 5,000 tabs unless the variable is a number; they report, they don't gate.
                 let count = Int(value).map { min(max($0, 10), 20_000) } ?? 5000
