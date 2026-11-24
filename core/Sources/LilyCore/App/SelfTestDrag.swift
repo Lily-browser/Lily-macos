@@ -5,9 +5,9 @@ import AppKit
 /// drag session. It moves the visible window and the pointer for a couple of seconds, so it never runs by default.
 @MainActor
 enum DragHarness {
-    /// The sidebar's list (an NSOutlineView behind SwiftUI's List), found by walking the views.
+    /// The sidebar's list (`NativeTabList`'s table), found by walking the views.
     static func list(in view: NSView) -> NSTableView? {
-        if let table = view as? NSTableView, String(describing: type(of: table)).contains("ListView") { return table }
+        if let table = view as? TabListTableView { return table }
         for sub in view.subviews { if let found = list(in: sub) { return found } }
         return nil
     }

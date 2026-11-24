@@ -723,6 +723,9 @@ enum SelfTest {
                 check("sidebar measurements", true, .object(await PerfHarness.run(window: window, tabCount: count)))
             }
 
+            let list = await TabListProbe.run(window: window)
+            check("native tab list follows the model", list.ok, list.detail)
+
             report["result"] = .string(failures.isEmpty ? "pass" : "fail")
             // The report is the self-test's output (stdout), not a log.
             FileHandle.standardOutput.write(Data((JSONValue.object(report).jsonString() + "\n").utf8))
