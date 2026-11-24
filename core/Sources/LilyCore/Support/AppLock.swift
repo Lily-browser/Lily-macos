@@ -1,7 +1,7 @@
 import Foundation
 import LocalAuthentication
 
-/// Optional lock on opening Lily (Settings → Privacy → "Ask for Touch ID to open Lily"): before any saved data
+/// Optional lock on opening Lily (Settings → Privacy → "Require authentication to open Lily"): before any saved data
 /// (session, history, bookmarks) is read, the Mac's owner has to authenticate with Touch ID, or the login password
 /// where there is no Touch ID. Off by default. It guards what Lily seals itself; WebKit's own website data
 /// (cookies, site storage) is not covered by it.

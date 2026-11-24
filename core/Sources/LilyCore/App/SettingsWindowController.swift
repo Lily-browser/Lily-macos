@@ -539,6 +539,8 @@ struct PrivacySettingsView: View {
     @AppStorage(Preferences.Key.handoff) private var handoff = false
     @AppStorage(Preferences.Key.fraudulentSiteWarnings) private var fraudWarnings = true
     @AppStorage(AppLock.key) private var requireAuth = false
+    /// Turning the lock on was refused because this Mac has no password or Touch ID to check against.
+    @State private var lockUnavailable = false
     @AppStorage(Preferences.Key.historyRetentionDays) private var retention = History.defaultRetentionDays
     @AppStorage(Preferences.Key.clearHistoryOnQuit) private var clearHistoryOnQuit = false
     @AppStorage(Preferences.Key.clearWebsiteDataOnQuit) private var clearDataOnQuit = false
@@ -601,14 +603,23 @@ struct PrivacySettingsView: View {
             // Changing the lock needs the owner too, and the switch only moves once they've authenticated (no revert, no second prompt).
             Toggle("Require authentication to open Lily", isOn: Binding(get: { requireAuth }, set: { on in
                 Task {
+                    lockUnavailable = false
                     let answer = await AppLock.systemAuthenticate(reason: on ? "Turn on the lock for opening Lily." : "Turn off the lock for opening Lily.")
                     // A Mac that can't authenticate at all can't have the lock turned on, but it can always be turned off.
                     if answer == true || (answer == nil && !on) { requireAuth = on }
+                    if answer == nil && on { lockUnavailable = true }
                 }
             }))
+            .accessibilityHint("Cookies and site data that WebKit keeps itself aren't covered.")
             LabeledContent("") {
                 Text("Lily asks for Touch ID or your Mac's password before it reads your tabs, history and bookmarks. Cookies and site data that WebKit keeps itself aren't covered.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            if lockUnavailable {
+                LabeledContent("") {
+                    Text("This Mac has no password or Touch ID to check against. Set one in System Settings to use this lock.")
+                        .font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+                }
             }
             Toggle("Continue pages on other devices (Handoff)", isOn: $handoff)
                 .onChange(of: handoff) { (NSApp.delegate as? AppDelegate)?.handoffChanged() }
