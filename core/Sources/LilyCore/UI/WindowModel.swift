@@ -382,7 +382,11 @@ enum Haptics {
 
     @MainActor static var isEnabled: Bool { Preferences.flag(Preferences.Key.haptics, default: true) }
 
+    /// How many haptics were asked for (the self-test counts them around a click and a drag).
+    @MainActor private(set) static var requested = 0
+
     @MainActor static func perform(_ pattern: NSHapticFeedbackManager.FeedbackPattern) {
+        requested += 1
         guard isEnabled else { return }
         NSHapticFeedbackManager.defaultPerformer.perform(pattern, performanceTime: .now)
     }

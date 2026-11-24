@@ -640,6 +640,7 @@ enum SelfTest {
             }
 
             if let dir = ProcessInfo.processInfo.environment["LILY_SELFTEST_SNAPSHOT_DIR"] {
+                window.window?.makeKeyAndOrderFront(nil) // the active look: an inactive window draws the list's selection gray
                 try? await Task.sleep(for: .milliseconds(600)) // let the sidebar render the new tab
                 func save(_ rep: NSBitmapImageRep?, _ name: String) {
                     if let png = rep?.representation(using: .png, properties: [:]) {
@@ -695,12 +696,16 @@ enum SelfTest {
                     if let a = row(of: "DragA").flatMap({ DragHarness.frame(ofRow: $0, in: table) }),
                        let c = row(of: "DragC").flatMap({ DragHarness.frame(ofRow: $0, in: table) }) {
                         detail["from"] = .string("\(Int(a.midX)),\(Int(a.midY))"); detail["to"] = .string("\(Int(c.midX)),\(Int(c.minY))")
+                        let hapticsBeforeClick = Haptics.requested
                         await DragHarness.click(CGPoint(x: a.midX, y: a.midY))
+                        detail["hapticsForClick"] = .number(Double(Haptics.requested - hapticsBeforeClick))
+                        let hapticsBeforeDrag = Haptics.requested
                         detail["clickSelectsRow"] = .bool(window.tabs.active?.title == "DragA")
                         // A is the last of the four; drop it on the upper edge of C: it should land between D and C.
                         await DragHarness.drag(from: CGPoint(x: a.midX, y: a.midY), to: CGPoint(x: c.midX, y: c.minY + 2))
                         let started = Date(); for _ in 0..<200 where order() == before { try? await Task.sleep(for: .milliseconds(100)) }; detail["settledAfterSeconds"] = .number(Date().timeIntervalSince(started)) // the drop settles asynchronously
                         after = order()
+                        detail["hapticsForDrag"] = .number(Double(Haptics.requested - hapticsBeforeDrag))
                     }
                 }
                 detail["events"] = .object(seenEvents.mapValues { JSONValue.number(Double($0)) })
