@@ -177,53 +177,19 @@ private struct TabListView: View {
     @AppStorage(AppearanceStyle.Key.closeButton) private var closeButton = CloseButtonVisibility.default.rawValue
     @AppStorage(AppearanceStyle.Key.dimSleepingTabs) private var dimSleeping = true
     @AppStorage(AppearanceStyle.Key.pinnedColumns) private var pinnedColumns = PinnedColumns.automatic
+    @AppStorage(AppearanceStyle.Key.interfaceFont) private var font = InterfaceFont.default.rawValue
 
     var body: some View {
         let row = SidebarRowStyle(textSize: SidebarTextSize(stored: storedTextSize), density: TabDensity(stored: density),
                                        closeButton: CloseButtonVisibility(stored: closeButton), dimsSleepingTabs: dimSleeping)
-        List(selection: Binding<UUID?>(get: { window.activeID }, set: { if let id = $0, id != window.activeID { window.activate(id) } })) {
-            if !window.pinnedTabs.isEmpty {
-                PinnedTabsGrid(window: window, tabs: window.pinnedTabs, activeID: window.activeID, accent: accent,
-                               columns: PinnedColumns.clamped(pinnedColumns))
-                    .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 8, trailing: 8))
-                    .listRowBackground(Color.clear)
-                    .selectionDisabled()
-            }
-            Section {
-                ForEach(window.regularItems) { item in
-                    switch item {
-                    case .tab(let tab):
-                        TabRow(tab: tab, window: window, row: row)
-                            .tag(tab.id)
-                            .listRowBackground(ActiveRowBackground(active: tab.id == window.activeID))
-                            // Reordering stays with onMove; this lets the row also be dropped on a
-                            // pinned tile, a space or a split, or into another app as its address.
-                            .itemProvider { TabDrag.provider(for: tab) }
-                    case .split(let layout, let members):
-                        SplitPill(layout: layout, members: members, window: window, row: row, accent: accent)
-                            .listRowInsets(EdgeInsets(top: 3, leading: 6, bottom: 3, trailing: 6))
-                            .listRowBackground(Color.clear)
-                    }
-                }
-                .onMove { window.moveItems(from: $0, to: $1) }
-                // A pinned tile dragged down unpins there; a link dragged in opens there.
-                .onInsert(of: [.lilyTab, .url]) { row, providers in
-                    Task { if let drop = await TabDrag.load(providers) { window.dropInList(drop, atRow: row) } }
-                }
-                NewTabRow(row: row) { window.newTab() }
-                    .selectionDisabled()
-            }
-        }
-        .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
-        .animation(.smooth(duration: 0.2), value: window.tabs.map(\.id))
-        .animation(.smooth(duration: 0.25), value: window.splitGroups)
+        NativeTabList(window: window, pinned: window.pinnedTabs, items: window.regularItems, activeID: window.activeID, row: row,
+                      accent: accent, design: InterfaceFont(stored: font).design, pinnedColumns: PinnedColumns.clamped(pinnedColumns))
     }
 }
 
 /// A split group: one rounded pill holding its tabs arranged like the split (side by side, stacked,
 /// three columns/rows, or a 2×2 grid). Clicking a tab focuses it in the split.
-private struct SplitPill: View {
+struct SplitPill: View {
     let layout: SplitLayout
     let members: [WindowModel.TabItem]
     let window: WindowModel
@@ -282,7 +248,7 @@ private struct SplitPill: View {
     }
 }
 
-private struct TabRow: View {
+struct TabRow: View {
     let tab: WindowModel.TabItem
     let window: WindowModel
     let row: SidebarRowStyle
@@ -362,7 +328,7 @@ private struct TabPreviewView: View {
 }
 
 /// The "New Tab" row at the end of the list: the whole row is the button, not just its glyph and text.
-private struct NewTabRow: View {
+struct NewTabRow: View {
     let row: SidebarRowStyle
     let action: () -> Void
     @State private var hovering = false
@@ -397,21 +363,8 @@ private struct NewTabRow: View {
 enum SidebarPill {
     static let inset: CGFloat = 10
     static let radius: CGFloat = 6
-}
-
-/// The active tab's highlight, in the user's accent color (Settings → Appearance). The list draws its own selection pill
-/// for the same row (inset 10 pt, corner radius ~6 pt, measured from a render); this one has exactly that shape, so the
-/// accent blends into it. At any other inset or radius it showed as a second, differently colored pill.
-private struct ActiveRowBackground: View {
-    let active: Bool
-    @AppStorage(AppearanceStyle.Key.accent) private var accent = AppearanceStyle.defaultAccent
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: SidebarPill.radius, style: .continuous)
-            .fill(active ? Color(hex: accent).opacity(0.22) : .clear)
-            .padding(.horizontal, SidebarPill.inset)
-            .animation(.smooth(duration: 0.15), value: active)
-    }
+    /// What a row adds above and below its content (the list's measured row pitch minus the row height).
+    static let rowPadding: CGFloat = 7.5
 }
 
 /// Right-click menu for a tab.
