@@ -25,6 +25,13 @@ final class ExtensionManager: NSObject, WKWebExtensionControllerDelegate {
     @ObservationIgnored var windows: () -> [BrowserWindowController] = { [] }
     @ObservationIgnored var focusedWindow: () -> BrowserWindowController? = { nil }
     @ObservationIgnored var openTab: (URL?, Bool) -> Tab? = { _, _ in nil }
+    /// Sensitive sites (a bank, say): no extension reads them except `sensitiveSiteExtensions`.
+    @ObservationIgnored var siteSettings: SiteSettings? { didSet { applySensitiveSites() } }
+    /// Chrome Web Store IDs of password managers that stay active on sensitive sites (1Password).
+    static let sensitiveSiteExtensions: Set<String> = ["aeblfdkhhhdcdjpifhhbdiojplfjncoa"]
+    /// The patterns denied per extension, so a site that stops being sensitive can be released.
+    @ObservationIgnored private var observingSites = false
+    @ObservationIgnored private var deniedPatterns: [String: Set<String>] = [:]
 
     init(library: ExtensionLibrary) {
         self.library = library
@@ -76,6 +83,7 @@ final class ExtensionManager: NSObject, WKWebExtensionControllerDelegate {
             }
             try controller.load(context)
             contexts[entry.id] = context
+            applySensitiveSites()
             logErrors(context)
             for window in windows() { window.registerWithExtensions(controller) }
         } catch {
@@ -94,7 +102,50 @@ final class ExtensionManager: NSObject, WKWebExtensionControllerDelegate {
         }
     }
 
+    /// The hosts marked sensitive in Site settings (a stored key may carry `http://` or a port).
+    static func sensitiveHosts(in sites: [String: SiteSettings.Site]) -> Set<String> {
+        Set(sites.compactMap { key, site -> String? in
+            guard site.sensitive == true else { return nil }
+            var name = key.hasPrefix("http://") ? String(key.dropFirst(7)) : key
+            if let colon = name.lastIndex(of: ":"), name[name.index(after: colon)...].allSatisfy(\.isNumber) { name = String(name[..<colon]) }
+            return name.isEmpty ? nil : name
+        })
+    }
+
+    /// Denies every extension but the allowlisted password managers access to the sensitive sites (and their
+    /// subdomains), so no content script or `activeTab` grant reads a bank page. Runs when an extension loads and
+    /// whenever Site settings change.
+    func applySensitiveSites() {
+        let hosts = siteSettings.map { Self.sensitiveHosts(in: $0.sites) } ?? []
+        for (id, context) in contexts {
+            let allowed = library.installed.first { $0.id == id }?.storeID.map(Self.sensitiveSiteExtensions.contains) ?? false
+            let wanted: Set<String> = allowed ? [] : Set(hosts.flatMap { ["*://\($0)/*", "*://*.\($0)/*"] })
+            let current = deniedPatterns[id] ?? []
+            for pattern in current.subtracting(wanted) {
+                if let match = try? WKWebExtension.MatchPattern(string: pattern) { context.setPermissionStatus(.unknown, for: match) }
+            }
+            for pattern in wanted.subtracting(current) {
+                if let match = try? WKWebExtension.MatchPattern(string: pattern) { context.setPermissionStatus(.deniedExplicitly, for: match) }
+            }
+            deniedPatterns[id] = wanted
+        }
+        observeSensitiveSites()
+    }
+
+    /// `SiteSettings` is observable: re-apply on the next change (observation fires once, so it's re-armed).
+    private func observeSensitiveSites() {
+        guard let siteSettings, !observingSites else { return }
+        observingSites = true
+        withObservationTracking { _ = siteSettings.sites } onChange: { [weak self] in
+            Task { @MainActor in
+                self?.observingSites = false
+                self?.applySensitiveSites()
+            }
+        }
+    }
+
     private func unload(_ id: String) {
+        deniedPatterns[id] = nil
         if let context = contexts.removeValue(forKey: id) { try? controller.unload(context) }
         notifications.removeAll(for: id)
         webSockets.removeAll(for: id)

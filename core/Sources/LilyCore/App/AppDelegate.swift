@@ -460,6 +460,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
                       let target = focused.isLittle ? self?.mainWindowForLittle() : focused else { return nil }
                 return target.tabs.create(url: url, activate: active)
             }
+            manager.siteSettings = siteSettings
             extensionRuntime = manager
             factory.extensionController = manager.controller
             factory.extensionPageConfiguration = { [weak manager] url in manager?.controller.extensionContext(for: url)?.webViewConfiguration }
