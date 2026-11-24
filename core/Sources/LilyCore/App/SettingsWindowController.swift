@@ -538,6 +538,7 @@ struct PrivacySettingsView: View {
     @AppStorage(Preferences.Key.removeLinkTracking) private var removeLinkTracking = true
     @AppStorage(Preferences.Key.handoff) private var handoff = false
     @AppStorage(Preferences.Key.fraudulentSiteWarnings) private var fraudWarnings = true
+    @AppStorage(AppLock.key) private var requireAuth = false
     @AppStorage(Preferences.Key.historyRetentionDays) private var retention = History.defaultRetentionDays
     @AppStorage(Preferences.Key.clearHistoryOnQuit) private var clearHistoryOnQuit = false
     @AppStorage(Preferences.Key.clearWebsiteDataOnQuit) private var clearDataOnQuit = false
@@ -597,6 +598,18 @@ struct PrivacySettingsView: View {
             Toggle("Upgrade connections to HTTPS (HTTPS-First)", isOn: $httpsFirst)
             Toggle("Remove trackers from links", isOn: $removeLinkTracking)
                 .help("Strips click and campaign identifiers (utm_…, fbclid, gclid and similar) from links you open, click or copy")
+            // Changing the lock needs the owner too, and the switch only moves once they've authenticated (no revert, no second prompt).
+            Toggle("Require authentication to open Lily", isOn: Binding(get: { requireAuth }, set: { on in
+                Task {
+                    let answer = await AppLock.systemAuthenticate(reason: on ? "Turn on the lock for opening Lily." : "Turn off the lock for opening Lily.")
+                    // A Mac that can't authenticate at all can't have the lock turned on, but it can always be turned off.
+                    if answer == true || (answer == nil && !on) { requireAuth = on }
+                }
+            }))
+            LabeledContent("") {
+                Text("Lily asks for Touch ID or your Mac's password before it reads your tabs, history and bookmarks. Cookies and site data that WebKit keeps itself aren't covered.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
             Toggle("Continue pages on other devices (Handoff)", isOn: $handoff)
                 .onChange(of: handoff) { (NSApp.delegate as? AppDelegate)?.handoffChanged() }
                 .help("Shares the address and title of the page you're on with every device signed in to your Apple account")

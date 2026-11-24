@@ -83,6 +83,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
             return
         }
 
+        // Before anything saved is read: the optional Touch ID lock (never in the self-test).
+        if !ProcessInfo.processInfo.arguments.contains("--self-test"), await AppLock.gate() == .denied {
+            NSApp.terminate(nil)
+            return
+        }
         do {
             registry = try ScriptRegistry(manifestURL: paths.injectionManifest)
         } catch {
