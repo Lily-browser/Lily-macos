@@ -170,7 +170,8 @@ public final class WebViewFactory {
         webView.allowsBackForwardNavigationGestures = true
         webView.allowsMagnification = true
         webView.isInspectable = WebInspector.isEnabled
-        webView.underPageBackgroundColor = .windowBackgroundColor
+        // No underPageBackgroundColor: WebKit then uses the page's own background where no page is painted yet (during a
+        // back/forward swipe, overscroll), as Safari does. A fixed window gray showed as a gray flash on dark pages (#160).
         return webView
     }
 
