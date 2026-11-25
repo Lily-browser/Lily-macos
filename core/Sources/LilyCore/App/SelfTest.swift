@@ -714,6 +714,9 @@ enum SelfTest {
                 ids.forEach { window.tabs.close($0) }
             }
 
+            let lookalike = await LookalikeProbe.run(window: window)
+            check("look-alike address asks first", lookalike.ok, lookalike.detail)
+
             let pill = await PillProbe.run(window: window)
             check("active tab is one pill", pill.ok, pill.detail)
 
