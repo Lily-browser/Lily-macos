@@ -7,7 +7,7 @@ import Darwin
 /// numbers, not a pass/fail: the question it answers is whether moving a piece to AppKit could measurably help.
 @MainActor
 enum PerfHarness {
-    private struct Usage {
+    struct Usage {
         var cpuSeconds: Double
         var contextSwitches: Int
         var peakMB: Double
@@ -79,6 +79,54 @@ enum PerfHarness {
         detail["idleContextSwitchesPerSecond"] = .number(Double(after.contextSwitches - before.contextSwitches) / 5)
         detail["peakMBAfter"] = .number(after.peakMB.rounded())
         detail["webViews"] = .number(Double(window.tabs.tabs.filter(\.hasWebView).count))
+        return detail
+    }
+
+    /// The full History window with `count` visits (#148): how long its list takes to show, what a scroll step costs, memory.
+    static func history(count: Int = 20_000) async -> [String: JSONValue] {
+        var detail: [String: JSONValue] = ["visits": .number(Double(count))]
+        let history = History(directory: nil)
+        let now = Date()
+        let visits = (0..<count).map { i in
+            (url: URL(string: "https://history-perf-\(i % 997).example/page/\(i)")!, title: "Perf visit \(i)", visitedAt: now.addingTimeInterval(-Double(i) * 180))
+        }
+        history.importVisits(visits)
+        detail["inHistory"] = .number(Double(history.visits.count))
+        let baseline = Usage()
+        let started = Date()
+        let controller = HistoryWindowController(history: history) { _, _ in }
+        controller.present()
+        func tables(in view: NSView) -> [NSTableView] { (view as? NSTableView).map { [$0] } ?? [] + view.subviews.flatMap(tables(in:)) }
+        var table: NSTableView?
+        for _ in 0..<1200 {
+            if let content = controller.window?.contentView {
+                let found = tables(in: content).max { $0.numberOfRows < $1.numberOfRows }
+                if let found, found.numberOfRows >= history.visits.count { table = found; break }
+            }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        detail["listReadyMs"] = .number(ms(started))
+        guard let table, let scroll = table.enclosingScrollView else {
+            detail["error"] = "history list not found"
+            controller.close()
+            return detail
+        }
+        detail["rows"] = .number(Double(table.numberOfRows))
+        let height = table.bounds.height - scroll.contentView.bounds.height
+        var steps: [Double] = []
+        for step in 0...100 {
+            let began = Date()
+            scroll.contentView.scroll(to: NSPoint(x: 0, y: height * Double(step) / 100))
+            scroll.reflectScrolledClipView(scroll.contentView)
+            controller.window?.displayIfNeeded()
+            steps.append(Date().timeIntervalSince(began) * 1000)
+        }
+        steps.sort()
+        detail["scrollStepMedianMs"] = .number((steps[steps.count / 2] * 10).rounded() / 10)
+        detail["scrollStepWorstMs"] = .number((steps.last! * 10).rounded() / 10)
+        detail["peakMBBefore"] = .number(baseline.peakMB.rounded())
+        detail["peakMBAfter"] = .number(Usage().peakMB.rounded())
+        controller.close()
         return detail
     }
 }
