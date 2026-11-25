@@ -12,10 +12,13 @@ public protocol TabDelegate: AnyObject {
     func tabDidStartDownload(_ tab: Tab)
     /// The tab switched between a web page and an extension's page, which need different web views.
     func tabDidReplaceWebView(_ tab: Tab)
+    /// An address that imitates another site was stopped without a sheet (no window to ask in): say so, and offer to open it.
+    func tab(_ tab: Tab, blockedLookalike verdict: LookalikeDomain.Verdict, url: URL)
 }
 
 public extension TabDelegate {
     func tabDidReplaceWebView(_ tab: Tab) {}
+    func tab(_ tab: Tab, blockedLookalike verdict: LookalikeDomain.Verdict, url: URL) {}
 }
 
 /// One browsing tab: owns its WKWebView, its IPC bridge, crash recovery and downloads.
@@ -490,8 +493,15 @@ extension Tab: WKNavigationDelegate {
         // An address that imitates another site (look-alike letters) needs a yes first, once per run.
         if navigationAction.targetFrame?.isMainFrame ?? true, navigationAction.navigationType != .backForward,
            let verdict = LookalikeWarning.verdict(for: navigationAction.request.url) {
-            guard await LookalikeWarning.confirm(verdict, in: webView.window) else {
+            switch await LookalikeWarning.confirm(verdict, in: webView.window) {
+            case .allowed: break
+            case .declined:
                 Log.web.info("Look-alike address blocked (\(verdict.reason.rawValue, privacy: .public))")
+                return (.cancel, preferences)
+            case .couldNotAsk:
+                // A background tab or a window busy with another sheet: stopped, but not silently.
+                Log.web.info("Look-alike address blocked without asking (\(verdict.reason.rawValue, privacy: .public))")
+                if let url = navigationAction.request.url { delegate?.tab(self, blockedLookalike: verdict, url: url) }
                 return (.cancel, preferences)
             }
         }
