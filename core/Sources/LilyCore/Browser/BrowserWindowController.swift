@@ -512,6 +512,15 @@ extension BrowserWindowController: TabDelegate {
         extensionsTabChanged(tab)
     }
 
+    public func tab(_ tab: Tab, blockedLookalike verdict: LookalikeDomain.Verdict, url: URL) {
+        // Only a notice with a way back to the question: "Review" shows the tab and asks with the full sheet.
+        model.showToast("Blocked an address that may imitate another site (\(verdict.asciiHost))", action: "Review") { [weak self, weak tab] in
+            guard let self, let tab else { return }
+            tabs.activate(tab.id)
+            tab.load(url)
+        }
+    }
+
     public func tabDidReplaceWebView(_ tab: Tab) {
         contentController.webViewReplaced(tab.id)
         if tabs.active === tab || tabs.split?.tabIDs.contains(tab.id) == true { showTab(tabs.active) }

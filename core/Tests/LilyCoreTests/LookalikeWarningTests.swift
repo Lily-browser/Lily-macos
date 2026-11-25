@@ -29,4 +29,13 @@ import Testing
         let shown = LookalikeWarning.isolated("bank\u{200B}.com")
         #expect(shown == "\u{2068}bank\\u{200B}.com\u{2069}")
     }
+
+    @Test func moreInvisibleCharactersAreEscaped() {
+        for scalar in ["\u{2800}", "\u{17B4}", "\u{180B}", "\u{E0100}", "\u{2003}", "\u{E0041}", "\u{200B}"] {
+            let shown = LookalikeWarning.isolated("bank\(scalar).com")
+            #expect(shown.contains("\\u{"), "\(scalar.unicodeScalars.first!.value)")
+        }
+        // Ordinary text, including non-Latin letters, is shown as it is.
+        #expect(LookalikeWarning.isolated("m\u{00FC}nchen.de") == "\u{2068}m\u{00FC}nchen.de\u{2069}")
+    }
 }
