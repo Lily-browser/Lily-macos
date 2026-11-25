@@ -27,6 +27,9 @@ enum SelfTest {
             func check(_ name: String, _ ok: Bool, _ detail: JSONValue = .null) {
                 report[name] = ["ok": .bool(ok), "detail": detail]
                 if !ok { failures.append(name) }
+                // Progress on stderr (the report on stdout comes only at the end): if the process dies, the last line says
+                // which check it was in. CI's packaged self-test has been trapping with no other trace.
+                FileHandle.standardError.write(Data("self-test \(ok ? "ok  " : "FAIL") \(name)\n".utf8))
             }
 
             check("window.ready", await waitUntil(10) { window.window?.isVisible == true })
