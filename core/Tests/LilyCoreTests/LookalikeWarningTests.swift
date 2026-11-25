@@ -5,19 +5,18 @@ import Testing
 @Suite @MainActor struct LookalikeWarningTests {
     @Test func warnsOnlyForLookalikes() {
         let fake = URL(string: "https://xn--pple-43d.com/")!
-        #expect(LookalikeWarning.verdict(for: fake, from: nil)?.reason == .mixedScript)
-        #expect(LookalikeWarning.verdict(for: URL(string: "https://apple.com/"), from: nil) == nil)
-        #expect(LookalikeWarning.verdict(for: URL(string: "https://xn--mnchen-3ya.de/"), from: nil) == nil)
-        #expect(LookalikeWarning.verdict(for: URL(string: "mailto:a@example.com"), from: nil) == nil)
+        #expect(LookalikeWarning.verdict(for: fake)?.reason == .mixedScript)
+        #expect(LookalikeWarning.verdict(for: URL(string: "https://apple.com/")) == nil)
+        #expect(LookalikeWarning.verdict(for: URL(string: "https://xn--mnchen-3ya.de/")) == nil)
+        #expect(LookalikeWarning.verdict(for: URL(string: "mailto:a@example.com")) == nil)
     }
 
-    @Test func staysQuietWithinTheSamePageAndAfterContinuing() {
+    @Test func staysQuietAfterContinuing() {
         let fake = URL(string: "https://xn--ppl-43d.example/")!
-        let verdict = LookalikeWarning.verdict(for: fake, from: nil)
+        let verdict = LookalikeWarning.verdict(for: fake)
         #expect(verdict != nil)
-        #expect(LookalikeWarning.verdict(for: fake, from: fake) == nil) // already on it
         LookalikeWarning.allow(verdict!)
-        #expect(LookalikeWarning.verdict(for: fake, from: nil) == nil)
+        #expect(LookalikeWarning.verdict(for: fake) == nil)
     }
 
     @Test func explainsTheReasonAndBothSpellings() {

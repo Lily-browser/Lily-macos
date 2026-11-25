@@ -489,7 +489,7 @@ extension Tab: WKNavigationDelegate {
         }
         // An address that imitates another site (look-alike letters) needs a yes first, once per run.
         if navigationAction.targetFrame?.isMainFrame ?? true, navigationAction.navigationType != .backForward,
-           let verdict = LookalikeWarning.verdict(for: navigationAction.request.url, from: url) {
+           let verdict = LookalikeWarning.verdict(for: navigationAction.request.url) {
             guard await LookalikeWarning.confirm(verdict, in: webView.window) else {
                 Log.web.info("Look-alike address blocked (\(verdict.reason.rawValue, privacy: .public))")
                 return (.cancel, preferences)

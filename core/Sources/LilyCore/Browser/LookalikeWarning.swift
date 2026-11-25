@@ -7,13 +7,15 @@ enum LookalikeWarning {
     /// Hosts the person chose to continue to, until Lily quits. Never saved.
     private(set) static var allowedHosts: Set<String> = []
 
-    /// The verdict to warn about for a main-frame navigation to `url`, nil when it can go ahead.
-    static func verdict(for url: URL?, from current: URL?) -> LookalikeDomain.Verdict? {
+    /// The verdict to warn about for a main-frame navigation to `url`, nil when it can go ahead. (It must not compare with
+    /// the page the tab is "on": by the time the policy is decided for a typed address, the tab's URL already is the target.)
+    static func verdict(for url: URL?) -> LookalikeDomain.Verdict? {
         guard let url, let host = url.host?.lowercased() else { return nil }
         // Cheap exit for ordinary addresses: a look-alike needs punycode or non-ASCII letters.
         guard host.contains("xn--") || !host.allSatisfy(\.isASCII) else { return nil }
-        guard !allowedHosts.contains(host), current?.host?.lowercased() != host else { return nil }
-        return LookalikeDomain.assess(url)
+        // Remembered by the ASCII (punycode) form, the same key `allow` stores, whichever form the URL's host arrives in.
+        guard let verdict = LookalikeDomain.assess(url), !allowedHosts.contains(verdict.asciiHost) else { return nil }
+        return verdict
     }
 
     static func allow(_ verdict: LookalikeDomain.Verdict) { allowedHosts.insert(verdict.asciiHost) }
