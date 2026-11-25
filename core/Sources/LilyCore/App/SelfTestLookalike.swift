@@ -62,18 +62,25 @@ enum LookalikeProbe {
         return nil
     }
 
-    /// Sends a key to the sheet and reports whether the sheet went away. If it didn't, it is closed anyway so the rest of
-    /// the self-test goes on.
+    /// Sends a key to the sheet and reports whether the sheet went away. A key only reaches the sheet while it is the key
+    /// window, which isn't guaranteed the instant it appears (another window, or the app not active, can hold it), so the
+    /// sheet is made key first and the key is sent again if nothing happened. If it never works, the sheet is closed anyway
+    /// so the rest of the self-test goes on.
     private static func press(_ keyCode: UInt16, _ character: String, on sheet: NSWindow, _ window: BrowserWindowController) async -> Bool {
-        if let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-                                        windowNumber: sheet.windowNumber, context: nil, characters: character, charactersIgnoringModifiers: character,
-                                        isARepeat: false, keyCode: keyCode) {
-            // Return is a key equivalent (the default button); Escape goes through cancelOperation.
-            if !sheet.performKeyEquivalent(with: event) { NSApp.sendEvent(event) }
-        }
-        for _ in 0..<20 {
-            try? await Task.sleep(for: .milliseconds(100))
-            if window.window?.attachedSheet == nil { return true }
+        for _ in 0..<3 {
+            NSApp.activate(ignoringOtherApps: true)
+            sheet.makeKeyAndOrderFront(nil)
+            try? await Task.sleep(for: .milliseconds(150))
+            if let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                            windowNumber: sheet.windowNumber, context: nil, characters: character, charactersIgnoringModifiers: character,
+                                            isARepeat: false, keyCode: keyCode) {
+                // Return is a key equivalent (the default button); Escape goes through the sheet's key monitor.
+                if !sheet.performKeyEquivalent(with: event) { NSApp.sendEvent(event) }
+            }
+            for _ in 0..<10 {
+                try? await Task.sleep(for: .milliseconds(100))
+                if window.window?.attachedSheet == nil { return true }
+            }
         }
         window.window?.endSheet(sheet, returnCode: .alertFirstButtonReturn)
         return false
