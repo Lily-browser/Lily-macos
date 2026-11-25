@@ -10,3 +10,7 @@ dia-resources-evidence.json
 # Claude Code local state
 .claude/worktrees/
 .claude/settings.local.json
+
+# Local files that never belong in the repo
+core/Package.resolved
+/*.mov
