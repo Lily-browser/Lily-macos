@@ -21,6 +21,13 @@ enum SelfTest {
     """
 
     static func run(window: BrowserWindowController, assistant: Assistant) {
+        // A Swift runtime failure (an index out of range, a failed unwrap) ends the process with SIGTRAP and no message.
+        // Print the call stack first, so CI can say where (the addresses are resolved against the unstripped build).
+        signal(SIGTRAP) { _ in
+            FileHandle.standardError.write(Data(("self-test CRASH (SIGTRAP)\nimage slide: \(_dyld_get_image_vmaddr_slide(0))\n"
+                                                 + Thread.callStackSymbols.joined(separator: "\n") + "\n").utf8))
+            _exit(133)
+        }
         Task { @MainActor in
             var report: [String: JSONValue] = [:]
             var failures: [String] = []

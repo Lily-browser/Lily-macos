@@ -55,21 +55,26 @@ jobs:
         run: make app
 
       - name: Self-test the packaged app
-        run: perl -e 'alarm 120; exec @ARGV' build/Lily.app/Contents/MacOS/Lily --self-test
+        run: |
+          # stderr (one progress line per check, and the call stack if the app traps) goes to a file the next step reads.
+          status=0
+          perl -e 'alarm 120; exec @ARGV' build/Lily.app/Contents/MacOS/Lily --self-test 2> self-test.err || status=$?
+          cat self-test.err
+          exit "$status"
 
-      # If the packaged app dies (the self-test has trapped with exit 133 and no other output), show the crash report:
-      # the thread that trapped and the Swift error say what failed.
-      - name: Show the crash report
+      # If the packaged app dies (the self-test has trapped with exit 133 and no other output), say where: the call stack
+      # it printed is addresses in the stripped app, resolved here against the unstripped build of the same code.
+      - name: Resolve the crash
         if: ${{ failure() }}
         run: |
           export PATH="/usr/bin:/bin:/usr/sbin:/sbin"
-          sleep 15 # the report is written a moment after the crash
-          for dir in "$HOME/Library/Logs/DiagnosticReports" /Library/Logs/DiagnosticReports; do
-            [ -d "$dir" ] || continue
-            for report in "$dir"/Lily*; do
-              [ -e "$report" ] || continue
-              echo "::group::$report"
-              head -c 60000 "$report" || true
-              echo "::endgroup::"
-            done
-          done
+          [ -f self-test.err ] || exit 0
+          echo "last checks:"; grep "^self-test" self-test.err | tail -3
+          grep -q "self-test CRASH" self-test.err || { echo "no call stack was printed"; exit 0; }
+          unstripped=$(ls core/.build/release/Lily core/.build/arm64-apple-macosx/release/Lily 2>/dev/null | head -1)
+          echo "call stack, resolved against $unstripped:"
+          slide=$(sed -n 's/^image slide: //p' self-test.err | head -1)
+          load=$(printf '0x%x' $((0x100000000 + slide)))
+          for address in $(grep -E "^[0-9]+ +Lily " self-test.err | awk '{print $3}'); do
+            atos -o "$unstripped" -l "$load" "$address" 2>/dev/null || echo "$address"
+          done | head -40
