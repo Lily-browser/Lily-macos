@@ -775,9 +775,16 @@ enum SelfTest {
     /// tab, which needs a web view made from the extension's configuration, and the tab goes back to
     /// a regular web view for a web page. The self-test doesn't load the user's extensions, so this
     /// runs a fixture extension in a runtime of its own.
+    @MainActor private static var retainedRuntimes: [AnyObject] = []
+
     @available(macOS 15.4, *)
     private static func extensionPopupProbe(window: BrowserWindowController, tab: Tab) async -> JSONValue {
         let manager = ExtensionManager(library: ExtensionLibrary(directory: nil))
+        // Kept for the rest of the process, like the real app's runtime: freeing it here frees its WebKit process pool while
+        // the extension's web processes are still sending messages, and WebKit sometimes traps in that teardown
+        // (WKProcessPool dealloc → IPC::MessageReceiverMap::invalidate). That was the intermittent CI crash of the packaged
+        // self-test (exit 133) from 2026-11-24 on.
+        retainedRuntimes.append(manager)
         manager.windows = { [window] }
         manager.focusedWindow = { window }
         let controller = manager.controller
