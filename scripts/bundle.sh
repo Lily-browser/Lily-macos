@@ -21,7 +21,8 @@ IDENTITY="${CODESIGN_IDENTITY:--}"
 ARCH_FLAGS=()
 [ "${UNIVERSAL:-0}" = "1" ] && ARCH_FLAGS=(--arch arm64 --arch x86_64)
 # Release: -O (SwiftPM's release default), full link-time optimization and dead-code stripping.
-RELEASE_FLAGS=(-c release --experimental-lto-mode=full -Xlinker -dead_strip)
+# --force-resolved-versions: build exactly the revisions in core/Package.resolved (a moved dependency tag fails).
+RELEASE_FLAGS=(-c release --experimental-lto-mode=full -Xlinker -dead_strip --force-resolved-versions)
 (cd "$ROOT/core" && swift build "${RELEASE_FLAGS[@]}" ${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"})
 BIN="$(cd "$ROOT/core" && swift build "${RELEASE_FLAGS[@]}" ${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"} --show-bin-path)/Lily"
 
