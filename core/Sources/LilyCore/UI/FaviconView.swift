@@ -42,6 +42,7 @@ final class FaviconLoader {
         config.httpShouldSetCookies = false
         config.urlCache = nil
         config.timeoutIntervalForRequest = 8
+        config.timeoutIntervalForResource = 20 // idle time alone never ends a slow trickle
         return config
     }
 
@@ -84,8 +85,7 @@ final class FaviconLoader {
         if let task = inFlight[icon] { return await task.value }
         let task = Task<NSImage?, Never> { [session] in
             guard Sanitize.isFetchableFavicon(icon), await Self.resolvesToPublic(icon),
-                  let (data, response) = try? await session.data(from: icon, delegate: FaviconRedirectGuard()),
-                  (response as? HTTPURLResponse)?.statusCode ?? 0 < 400, data.count < 512_000 else { return nil }
+                  let data = await Self.body(of: icon, with: session) else { return nil }
             return NSImage(data: data)
         }
         inFlight[icon] = task
@@ -102,6 +102,24 @@ final class FaviconLoader {
         }
         return image
     }
+
+    /// The icon's bytes, read as they arrive: a declared length over the cap is refused up front, and the read
+    /// stops the moment the cap is passed, so a page's icon server can't make the app buffer an endless body.
+    static func body(of icon: URL, with session: URLSession, limit: Int = maxDownloadBytes) async -> Data? {
+        guard let (bytes, response) = try? await session.bytes(from: icon, delegate: FaviconRedirectGuard()),
+              (response as? HTTPURLResponse)?.statusCode ?? 0 < 400,
+              response.expectedContentLength <= Int64(limit) else { return nil }
+        var data = Data()
+        do {
+            for try await byte in bytes {
+                data.append(byte)
+                if data.count >= limit { return nil }
+            }
+        } catch { return nil }
+        return data
+    }
+
+    static let maxDownloadBytes = 512_000
 
     /// A public-looking name can still point at loopback or the LAN: refuse when any address it
     /// resolves to isn't public. (A name that doesn't resolve simply fails to connect.)
