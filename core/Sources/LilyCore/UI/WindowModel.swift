@@ -339,7 +339,7 @@ public final class WindowModel {
 
     func copyLink(_ id: UUID) {
         guard let url = controller?.tabs.tab(id)?.url else { return }
-        Clipboard.copy(LinkTracking.cleaned(url).absoluteString, sensitive: isPrivate)
+        Clipboard.copy(LinkTracking.cleaned(url).absoluteString, sensitive: isPrivate || isSensitive(url))
         showToast("Link copied")
         Haptics.tap()
     }
