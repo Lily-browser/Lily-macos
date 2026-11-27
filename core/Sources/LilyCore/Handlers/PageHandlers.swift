@@ -15,7 +15,7 @@ extension BrowserWindowController {
             if tabID == self.tabs.activeID { self.model.selection = tab.lastSelection } // cleared on commit
             let sensitive = self.isSensitive(metadata.url)
             if !sensitive { self.history?.record(url: metadata.url, title: metadata.title) } // nothing is kept about a sensitive site
-            if tabID == self.tabs.activeID { self.updateSharingType() }
+            if self.visibleTabIDs.contains(tabID) { self.updateSharingType() }
             if !sensitive { self.offerFormRestore(tab) }
             // A navigation resets the page's scripts; a pane of a linked split links again.
             if self.scrollLinkedTabs.contains(tabID) { self.setScrollLink(true, in: tab) }

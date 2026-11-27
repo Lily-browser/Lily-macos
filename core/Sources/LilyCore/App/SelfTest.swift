@@ -568,6 +568,21 @@ enum SelfTest {
             let shownAgain = window.window?.sharingType == .readOnly
             check("sensitive sites keep nothing", noDraft && noHistory && hidden && shownAgain,
                   ["noDraft": .bool(noDraft), "noHistory": .bool(noHistory), "hiddenFromCapture": .bool(hidden), "shownAgain": .bool(shownAgain)])
+            // The mark follows every pane on screen: a bank in the unfocused half of a split still hides the window.
+            window.factory.siteSettings?.update(URL(string: "https://bank.selftest.lily.test/")) { $0.sensitive = true }
+            let sibling = window.tabs.create(url: nil, activate: false)
+            _ = window.tabs.makeSplit(.twoColumns, with: [sibling.id])
+            window.tabs.activate(sibling.id)
+            window.updateSharingType()
+            let splitHidden = window.window?.sharingType == NSWindow.SharingType.none
+            window.tabs.removeFromSplit(sibling.id)
+            window.tabs.activate(sibling.id)
+            window.updateSharingType()
+            let splitShownAgain = window.window?.sharingType == .readOnly
+            window.factory.siteSettings?.update(URL(string: "https://bank.selftest.lily.test/")) { $0.sensitive = nil }
+            window.tabs.close(sibling.id)
+            check("sensitive pane in a split hides the window", splitHidden && splitShownAgain,
+                  ["hiddenWhileSplit": .bool(splitHidden), "shownAfterLeavingSplit": .bool(splitShownAgain)])
             window.tabs.close(bankTab.id)
 
             // Lily's own pages run without page JavaScript, keep the tab's address and stay out of history.
