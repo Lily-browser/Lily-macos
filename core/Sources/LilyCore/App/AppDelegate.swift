@@ -482,6 +482,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         } else {
             do {
                 let injector = try ExtensionScriptInjector(library: library, shimURL: paths.injections.appendingPathComponent("extension-compat.js"))
+                injector.isSensitive = { [weak self] url in self?.siteSettings.isSensitive(url) ?? false }
                 extensionRuntime = injector
                 factory.extensionScripts = injector
             } catch {

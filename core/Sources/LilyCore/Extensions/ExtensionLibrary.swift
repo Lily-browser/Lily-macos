@@ -24,6 +24,10 @@ struct InstalledExtension: Codable, Identifiable, Equatable {
 @MainActor @Observable
 final class ExtensionLibrary {
     /// An enabled extension whose pinned copy passed its integrity check.
+    /// Chrome Web Store IDs of password managers that stay active on sensitive sites (1Password); no other extension runs there
+    /// (the WebKit runtime enforces it in `ExtensionManager`, the compatibility runtime in `ExtensionScriptInjector`).
+    static let sensitiveSiteExtensions: Set<String> = ["aeblfdkhhhdcdjpifhhbdiojplfjncoa"]
+
     struct Entry: Identifiable {
         let id: String
         let manifest: ExtensionManifest

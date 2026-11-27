@@ -54,6 +54,16 @@ private func package(_ manifest: String, _ files: [String: String] = [:]) throws
     }
 }
 
+@Suite @MainActor struct CompatSensitiveSiteTests {
+    @Test func onlyAllowlistedPasswordManagersRunOnASensitiveSite() {
+        #expect(ExtensionScriptInjector.permits(storeID: nil, onSensitiveSite: false))
+        #expect(ExtensionScriptInjector.permits(storeID: "someotherextensionid", onSensitiveSite: false))
+        #expect(!ExtensionScriptInjector.permits(storeID: nil, onSensitiveSite: true)) // a local install never qualifies
+        #expect(!ExtensionScriptInjector.permits(storeID: "someotherextensionid", onSensitiveSite: true))
+        for id in ExtensionLibrary.sensitiveSiteExtensions { #expect(ExtensionScriptInjector.permits(storeID: id, onSensitiveSite: true)) }
+    }
+}
+
 @Suite @MainActor struct ExtensionCompatibilityTests {
     func entry(_ manifest: String, _ files: [String: String]) throws -> ExtensionLibrary.Entry {
         let pkg = try package(manifest, files)

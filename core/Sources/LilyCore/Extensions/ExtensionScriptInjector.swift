@@ -31,6 +31,21 @@ final class ExtensionScriptInjector {
         shimSource = try String(contentsOf: shimURL, encoding: .utf8)
     }
 
+    /// Whether `url` is a sensitive site (a bank, say). Set by the app; on those sites only the allowlisted password
+    /// managers run, as on macOS 15.4+ where `ExtensionManager` denies the other extensions the host.
+    var isSensitive: (URL) -> Bool = { _ in false }
+
+    /// Whether an extension from the store ID `storeID` (nil for a local install) may run on a page: everything may, except
+    /// on a sensitive site, where only the allowlisted password managers may.
+    static func permits(storeID: String?, onSensitiveSite: Bool) -> Bool {
+        !onSensitiveSite || (storeID.map(ExtensionLibrary.sensitiveSiteExtensions.contains) ?? false)
+    }
+
+    private func mayRun(_ extensionID: String, on url: URL?) -> Bool {
+        guard let url, isSensitive(url) else { return true }
+        return Self.permits(storeID: library.installed.first { $0.id == extensionID }?.storeID, onSensitiveSite: true)
+    }
+
     static func world(for extensionID: String) -> WKContentWorld { .world(name: "LilyExtension.\(extensionID)") }
 
     /// The content scripts of `entries` that apply to `url`, in manifest order.
@@ -55,7 +70,7 @@ final class ExtensionScriptInjector {
 
     /// The CSS of content scripts that apply to `url` for one extension (served to the shim).
     func css(for extensionID: String, url: URL?) -> [String] {
-        guard let url, let entry = library.entry(extensionID) else { return [] }
+        guard let url, mayRun(extensionID, on: url), let entry = library.entry(extensionID) else { return [] }
         return entry.manifest.contentScripts.filter { Self.matches($0, url) }.flatMap { $0.css ?? [] }
             .compactMap { entry.package.files[$0].map { String(decoding: $0, as: UTF8.self) } }
     }
@@ -64,7 +79,7 @@ final class ExtensionScriptInjector {
     /// scripts for `url`, only when that set changes.
     func configure(_ controller: WKUserContentController, for url: URL?, registry: ScriptRegistry) {
         let key = ObjectIdentifier(controller)
-        let planned = Self.plan(for: url, entries: library.ready)
+        let planned = Self.plan(for: url, entries: library.ready.filter { mayRun($0.id, on: url) })
         guard applied[key, default: []] != planned else { return }
         registry.install(into: controller) // starts from Lily's own scripts only
         let needed = Set(planned.map(\.extensionID))
