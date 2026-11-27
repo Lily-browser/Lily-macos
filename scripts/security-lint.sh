@@ -67,6 +67,16 @@ report "injected scripts: no eval, Function, innerHTML/outerHTML, document.write
 report "package dependencies pinned to exact versions or revisions" \
   "$(grep -nE '\.package\(' core/Package.swift | grep -vE 'exact:|revision:' || true)"
 
+# The tag in Package.swift can be moved in the LilyKit repo; the committed lockfile pins the commit, and
+# release builds pass --force-resolved-versions so a moved tag fails the build instead of changing the app.
+lock_problem=""
+if ! git ls-files --error-unmatch core/Package.resolved >/dev/null 2>&1; then
+  lock_problem="core/Package.resolved is not committed"
+elif [ "$(grep -cE '\.package\(' core/Package.swift)" -ne "$(grep -cE '"revision" : "[0-9a-f]{40}"' core/Package.resolved)" ]; then
+  lock_problem="core/Package.resolved does not pin every dependency to a full revision"
+fi
+report "dependency lockfile committed, every dependency pinned to a full revision" "$lock_problem"
+
 report "no committed secrets" \
   "$(git ls-files -z | xargs -0 grep -nIE 'AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{40,}|sk-[A-Za-z0-9_-]{32,}|xox[baprs]-[A-Za-z0-9-]{10,}' 2>/dev/null \
       | grep -vE '^(scripts/verify-app\.sh|scripts/security-lint\.sh):' || true)"

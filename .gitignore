@@ -12,5 +12,4 @@ dia-resources-evidence.json
 .claude/settings.local.json
 
 # Local files that never belong in the repo
-core/Package.resolved
 /*.mov
