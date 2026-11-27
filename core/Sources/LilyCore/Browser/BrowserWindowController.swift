@@ -400,11 +400,15 @@ public final class BrowserWindowController: NSWindowController, NSWindowDelegate
     /// Settings → Websites → a site marked sensitive (a bank): nothing is kept about it and its content stays out of the assistant.
     func isSensitive(_ url: URL?) -> Bool { factory.siteSettings?.isSensitive(url) ?? false }
 
-    /// A sensitive page keeps the window out of screenshots, screen recording and sharing while it is the one showing
-    /// (private windows always do; macOS honours the request as far as it can).
+    /// The tabs on screen: the active one, or every pane of the split it belongs to.
+    var visibleTabIDs: [UUID] { tabs.split?.tabIDs ?? tabs.activeID.map { [$0] } ?? [] }
+
+    /// A sensitive page keeps the window out of screenshots, screen recording and sharing while it is showing, in any
+    /// pane of a split, not only the focused one (private windows always do; macOS honours the request as far as it can).
     func updateSharingType() {
         guard !isPrivate else { return }
-        window?.sharingType = isSensitive(tabs.active?.url) ? .none : .readOnly
+        let sensitive = visibleTabIDs.contains { isSensitive(tabs.tab($0)?.url) }
+        window?.sharingType = sensitive ? .none : .readOnly
     }
 
     private func showTab(_ tab: Tab?) {
