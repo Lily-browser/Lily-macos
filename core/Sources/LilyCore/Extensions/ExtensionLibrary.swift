@@ -161,11 +161,12 @@ final class ExtensionLibrary {
             }
             // A newer copy of a store extension replaces the old one and keeps its data.
             let previous = storeID.flatMap { id in installed.first { $0.storeID == id } }
+            let added = previous.map { Self.addedAccess(old: ($0.grantedPermissions ?? [], $0.grantedPatterns ?? []), new: (manifest.permissions, Self.requestedPatterns(manifest))) }
             guard confirmInstall(manifest, package: inspected.package, audit: inspected.audit, hash: hash,
-                                 replacing: previous.map { displayVersion($0.id) }) else { return }
+                                 replacing: previous.map { displayVersion($0.id) }, addedAccess: added ?? []) else { return }
             try await ExtensionLoader.pin(inspected.package, to: folder)
             let record = InstalledExtension(id: previous?.id ?? UUID().uuidString, bookmark: nil, pinnedFolder: folder.lastPathComponent,
-                                            contentHash: hash, enabled: true, grantedPermissions: manifest.permissions,
+                                            contentHash: hash, enabled: previous?.enabled ?? true, grantedPermissions: manifest.permissions,
                                             grantedPatterns: Self.requestedPatterns(manifest), storeID: storeID)
             if let previous, let index = installed.firstIndex(where: { $0.id == previous.id }) {
                 ready.removeAll { $0.id == previous.id }
@@ -299,7 +300,7 @@ final class ExtensionLibrary {
     }
 
     private func confirmInstall(_ manifest: ExtensionManifest, package: ExtensionPackage, audit: ExtensionAudit, hash: String,
-                                replacing oldVersion: String? = nil) -> Bool {
+                                replacing oldVersion: String? = nil, addedAccess: [String] = []) -> Bool {
         let alert = NSAlert()
         let name = Sanitize.displayText(manifest.name, max: 60)
         let version = Sanitize.displayText(manifest.version, max: 30)
@@ -313,10 +314,10 @@ final class ExtensionLibrary {
         let hosts = Self.requestedPatterns(manifest).map { Sanitize.displayText($0, max: 80) }
         lines.append("It will be able to:")
         lines += manifest.permissions.sorted().map { "• \(Self.describe($0))" }
-        if !hosts.isEmpty {
-            lines.append(hosts.contains { $0 == "<all_urls>" || $0.hasPrefix("*://*/") }
-                         ? "• Read and change all your data on all websites"
-                         : "• Read and change your data on: \(hosts.prefix(6).joined(separator: ", "))\(hosts.count > 6 ? "…" : "")")
+        if let access = Self.hostAccessSummary(hosts) { lines.append(access) }
+        if oldVersion != nil, oldVersion != manifest.version {
+            lines.append(addedAccess.isEmpty ? "\nNothing new compared with the installed version."
+                                             : "\nNew compared with the installed version:\n" + addedAccess.map { "⚠︎ \($0)" }.joined(separator: "\n"))
         }
         let notable = audit.findings.filter { $0.severity >= .warning }
         if !notable.isEmpty {
@@ -336,6 +337,34 @@ final class ExtensionLibrary {
         alert.addButton(withTitle: oldVersion == nil ? "Add Extension" : oldVersion == manifest.version ? "Reinstall" : "Update")
         alert.addButton(withTitle: "Cancel")
         return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    /// Whether a match pattern covers every website (`<all_urls>`, `*://*/*`, `https://*/*`, `http://*/*`).
+    static func coversAllSites(_ pattern: String) -> Bool {
+        pattern == "<all_urls>" || pattern.range(of: #"^(\*|https?)://\*/"#, options: .regularExpression) != nil
+    }
+
+    /// The install dialog's line about website access: all sites, or every host listed (a long list is counted, never
+    /// silently cut, so a sensitive host can't hide past the sixth).
+    static func hostAccessSummary(_ hosts: [String]) -> String? {
+        guard !hosts.isEmpty else { return nil }
+        if hosts.contains(where: coversAllSites) { return "• Read and change all your data on all websites" }
+        let shown = hosts.prefix(6).joined(separator: ", ")
+        return "• Read and change your data on \(hosts.count) site pattern\(hosts.count == 1 ? "" : "s"): \(shown)"
+            + (hosts.count > 6 ? " and \(hosts.count - 6) more" : "")
+    }
+
+    /// What an update asks for that the installed version didn't have, in the dialog's words.
+    static func addedAccess(old: (permissions: [String], patterns: [String]), new: (permissions: [String], patterns: [String])) -> [String] {
+        let permissions = Set(new.permissions).subtracting(old.permissions).sorted().map(describe)
+        let patterns = Set(new.patterns).subtracting(old.patterns)
+        var out = permissions
+        if patterns.contains(where: coversAllSites) && !old.patterns.contains(where: coversAllSites) {
+            out.append("Read and change all your data on all websites")
+        } else if !patterns.isEmpty {
+            out.append("Read and change your data on: \(patterns.sorted().prefix(6).joined(separator: ", "))\(patterns.count > 6 ? " and \(patterns.count - 6) more" : "")")
+        }
+        return out
     }
 
     static func describe(_ permission: String) -> String {
