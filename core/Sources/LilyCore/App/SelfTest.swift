@@ -730,6 +730,9 @@ enum SelfTest {
             let pill = await PillProbe.run(window: window)
             check("active tab is one pill", pill.ok, pill.detail)
 
+            let sleeping = await SleepProbe.run(window: window)
+            check("sleep a tab on demand", sleeping.ok, sleeping.detail)
+
             if ProcessInfo.processInfo.environment["LILY_SELFTEST_PERF"] == "history" {
                 check("history window measurements", true, .object(await PerfHarness.history()))
             } else if let value = ProcessInfo.processInfo.environment["LILY_SELFTEST_PERF"] {

@@ -354,6 +354,29 @@ public final class WindowModel {
         (NSApp.delegate as? AppDelegate)?.openInNewWindow(url, isPrivate: isPrivate)
     }
 
+    /// A tab can be put to sleep by hand unless it is the one on screen, part of the visible split, already asleep or not a web page.
+    func canSleep(_ id: UUID) -> Bool {
+        guard let store = controller?.tabs, let tab = store.tab(id) else { return false }
+        return !tab.isSleeping && id != store.activeID && !(store.split?.tabIDs.contains(id) ?? false)
+            && (tab.url?.scheme == "https" || tab.url?.scheme == "http")
+    }
+
+    /// Every other tab in this space that could sleep now (pinned ones too: that is the point of the command).
+    func otherTabsToSleep(except id: UUID) -> [UUID] {
+        guard let store = controller?.tabs else { return [] }
+        return store.visibleTabs.map(\.id).filter { $0 != id && canSleep($0) }
+    }
+
+    /// Frees the memory of the given tabs now; each comes back where it was when it is opened.
+    func sleepTabs(_ ids: [UUID]) {
+        guard let store = controller?.tabs else { return }
+        let sleepable = ids.filter(canSleep)
+        guard !sleepable.isEmpty else { return }
+        sleepable.compactMap { store.tab($0) }.forEach { $0.sleep() }
+        showToast(sleepable.count == 1 ? "Tab put to sleep" : "\(sleepable.count) tabs put to sleep")
+        Haptics.tap()
+    }
+
     func closeOthers(_ id: UUID) {
         guard let store = controller?.tabs else { return }
         store.visibleTabs.filter { $0.id != id && !$0.isPinned }.forEach { store.close($0.id) }
