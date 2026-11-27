@@ -25,6 +25,8 @@ enum TabMenu {
         if let url = tab.url { out.append(.share(url)) }
         out += [
             .item("Pause Media", symbol: "pause.circle") { window.pauseMedia(tab.id) },
+            .item("Sleep Tab", symbol: "moon.zzz", enabled: window.canSleep(tab.id)) { window.sleepTabs([tab.id]) },
+            .item("Sleep Other Tabs", symbol: "moon.zzz", enabled: window.otherTabsToSleep(except: tab.id).count > 0) { window.sleepTabs(window.otherTabsToSleep(except: tab.id)) },
             .divider,
             .item("Open in New Window", symbol: "macwindow.badge.plus", enabled: tab.url != nil) { window.openInNewWindow(tab.id) },
         ]
