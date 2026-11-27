@@ -128,9 +128,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
             Task { await library.loadAll() }
         }
         assistant = Assistant(configuration: .fromPreferences())
-        sessionStore = SessionStore(directory: paths.applicationSupport)
-        // The self-test must not leave its fixture pages in the user's real history.
+        // The self-test skips the App Lock, so it must not touch anything real: its session goes to a throwaway folder
+        // (a fixture session over the user's saved one would also be a way to lose it without unlocking), and it must not
+        // leave its fixture pages in the user's real history.
         let isSelfTest = ProcessInfo.processInfo.arguments.contains("--self-test")
+        sessionStore = SessionStore(directory: isSelfTest ? FileManager.default.temporaryDirectory.appendingPathComponent("lily-selftest-session-\(UUID().uuidString)", isDirectory: true)
+                                                         : paths.applicationSupport)
         history = History(directory: isSelfTest ? nil : paths.applicationSupport)
         // Kept site icons follow history: whatever history forgets, its icons go too.
         await FaviconLoader.shared.load(directory: isSelfTest ? nil : paths.applicationSupport)
