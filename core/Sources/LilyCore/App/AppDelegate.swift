@@ -18,6 +18,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
     private(set) var extensionLibrary: ExtensionLibrary?
     private(set) var extensionRuntime: AnyObject?
     private var memoryPressure: DispatchSourceMemoryPressure?
+    /// For the diagnostics log: how long this process has been running when something happens (#160, the gray swipe, went
+    /// away after a relaunch, so how long Lily had run is the first thing to know if it returns).
+    private let launchedAt = Date()
+    private var uptimeText: String {
+        let seconds = Int(Date().timeIntervalSince(launchedAt))
+        return "\(seconds / 3600) h \(seconds % 3600 / 60) min"
+    }
     private let appIcon = AppIconController()
     private var historyWindow: HistoryWindowController?
     private let historyMenuDelegate = HistoryMenuDelegate()
@@ -49,6 +56,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         paths = AppPaths.resolve()
         // Private: the path includes the macOS user name.
         Log.app.info("Resources at \(self.paths.root.path, privacy: .private)")
+        Log.app.notice("Launched \(AppInfo.version, privacy: .public) on macOS \(ProcessInfo.processInfo.operatingSystemVersionString, privacy: .public)")
         MainMenu.disableSystemItems()
         NSApp.mainMenu = MainMenu.build()
         MainMenu.updateDevelopMenu()
@@ -63,7 +71,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         let source = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .main)
         source.setEventHandler { [weak self] in
             MainActor.assumeIsolated {
-                Log.app.info("Memory pressure: putting background tabs to sleep")
+                let level = self?.memoryPressure?.data.contains(.critical) == true ? "critical" : "warning"
+                let loaded = self?.windows.reduce(0) { $0 + $1.tabs.tabs.filter(\.hasWebView).count } ?? 0
+                Log.app.notice("Memory pressure (\(level, privacy: .public)) after \(self?.uptimeText ?? "?", privacy: .public) up, \(loaded, privacy: .public) tabs with a web view: putting background tabs to sleep")
                 self?.windows.forEach { $0.sleepBackgroundTabs() }
             }
         }
