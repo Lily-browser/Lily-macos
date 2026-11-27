@@ -23,7 +23,37 @@ final class IconServer: URLProtocol, @unchecked Sendable {
     override func stopLoading() {}
 }
 
+/// Answers with a body of `size` bytes, optionally declaring a length, to test the size cap.
+final class BigIconServer: URLProtocol, @unchecked Sendable {
+    nonisolated(unsafe) static var size = 0
+    nonisolated(unsafe) static var declares = true
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let headers = Self.declares ? ["Content-Length": String(Self.size)] : [:]
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: headers)!,
+                            cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(count: Self.size))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
+
 @Suite(.serialized) @MainActor struct FaviconPrivacyTests {
+    @Test func anIconOverTheCapIsRefusedWhetherOrNotItDeclaresItsLength() async {
+        let config = FaviconLoader.ephemeral
+        config.protocolClasses = [BigIconServer.self]
+        let session = URLSession(configuration: config)
+        let url = URL(string: "https://news.example/big.ico")!
+        BigIconServer.size = FaviconLoader.maxDownloadBytes * 2
+        for declares in [true, false] {
+            BigIconServer.declares = declares
+            #expect(await FaviconLoader.body(of: url, with: session) == nil)
+        }
+        BigIconServer.size = 1000
+        #expect(await FaviconLoader.body(of: url, with: session)?.count == 1000)
+    }
+
     private let page = URL(string: "https://news.example/story/1")!
     private let icon = URL(string: "https://news.example/favicon.ico")!
 
