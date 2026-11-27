@@ -27,6 +27,12 @@ public final class WindowModel {
     var spaceForward = true
     /// Horizontal offset of the tab list while a space swipe is in progress.
     var spaceDragOffset: CGFloat = 0
+    /// The space the swipe points at (nil when there is none in that direction) and how far along it is, 0...1.
+    var spaceDragTarget: UUID?
+    var spaceDragProgress: CGFloat = 0
+    /// The colors the sidebar tint washes between during a swipe: the current space's and the target's.
+    var washFrom: String? { currentSpace?.color }
+    var washTo: String? { spaces.first { $0.id == spaceDragTarget }?.color }
     var currentSpace: Space? { spaces.first { $0.id == currentSpaceID } }
     /// Every split group, in pane order; the active tab's group is the one on screen.
     var splitGroups: [SplitGroup] = []

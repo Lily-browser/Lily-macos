@@ -8,7 +8,10 @@ struct SidebarView: View {
     @AppStorage(AppearanceStyle.Key.showsAddressField) private var showsAddress = true
     @AppStorage(AppearanceStyle.Key.interfaceFont) private var font = InterfaceFont.default.rawValue
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
+        let depth = SpaceSwipe.depth(offset: window.spaceDragOffset, reduceMotion: reduceMotion)
         VStack(spacing: 0) {
             if showsAddress {
                 AddressPill(window: window)
@@ -26,10 +29,14 @@ struct SidebarView: View {
                         TabListView(window: window)
                     }
                     .id(window.currentSpaceID)
-                    .transition(.push(from: window.spaceForward ? .trailing : .leading))
+                    // The next space slides in from its side and settles up from slightly back; with Reduce Motion it fades.
+                    .transition(reduceMotion ? .opacity : .push(from: window.spaceForward ? .trailing : .leading).combined(with: .scale(scale: 0.95)))
                 }
+                // Depth: while dragging, the list recedes (smaller, tilted away), pivoting on the edge it moves toward.
+                .scaleEffect(depth.scale, anchor: depth.anchor)
+                .rotation3DEffect(.degrees(depth.tilt), axis: (x: 0, y: 1, z: 0), anchor: depth.anchor, perspective: 0.5)
+                .opacity(depth.opacity)
                 .offset(x: window.spaceDragOffset)
-                .opacity(1 - min(0.35, abs(window.spaceDragOffset) / 500))
                 .clipped()
                 .transition(.move(edge: .leading).combined(with: .opacity))
             case .assistant:
@@ -44,8 +51,11 @@ struct SidebarView: View {
                 .padding(.vertical, 8)
         }
         .animation(.smooth(duration: 0.25), value: window.panel)
-        .animation(.spring(response: 0.35, dampingFraction: 0.86), value: window.currentSpaceID)
-        .background(SidebarBackground(spaceColor: window.isPrivate ? nil : window.currentSpace?.color))
+        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.35, dampingFraction: 0.86), value: window.currentSpaceID)
+        .background {
+            if window.isPrivate { SidebarBackground(spaceColor: nil) }
+            else { SpaceWash(from: window.washFrom, to: window.washTo, progress: window.spaceDragProgress) }
+        }
         .appAccent()
         .overlay(alignment: .bottom) {
             if let toast = window.toast {

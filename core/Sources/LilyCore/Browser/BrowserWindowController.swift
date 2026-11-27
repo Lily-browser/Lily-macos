@@ -42,6 +42,8 @@ public final class BrowserWindowController: NSWindowController, NSWindowDelegate
     private var swipeDelta = CGSize.zero
     private var swipeAxis: SwipeAxis = .idle
     private var swipeCrossed = false
+    /// The bump at the end of the line fires once per swipe.
+    private var swipeHitEdge = false
     private var swallowMomentum = false
     private var commandBarObservation: Task<Void, Never>?
     /// The sidebar's split item; it sits first or last in `splitController` (Settings → Appearance).
@@ -207,6 +209,8 @@ public final class BrowserWindowController: NSWindowController, NSWindowDelegate
             swipeAxis = .undecided
             swipeDelta = .zero
             swipeCrossed = false
+            swipeHitEdge = false
+            model.spaceDragTarget = nil
             return false
         case .changed:
             // Finger direction, whatever the natural-scrolling setting.
@@ -251,15 +255,32 @@ public final class BrowserWindowController: NSWindowController, NSWindowDelegate
 
     private func updateSwipe() {
         let raw = swipeDelta.width
+        let step = swipeTarget(for: raw)
         // Rubber-band when there's no space in that direction.
-        let offset = swipeTarget(for: raw) == nil ? raw * 0.2 : raw
+        let offset = step == nil ? raw * 0.2 : raw
         model.spaceDragOffset = offset
+        // The sidebar tint washes toward the next space as the swipe nears the point where it switches.
+        let progress = SpaceSwipe.progress(offset: offset, threshold: swipeThreshold, hasTarget: step != nil)
+        if let step, let index = tabs.spaces.firstIndex(where: { $0.id == tabs.currentSpaceID }) {
+            model.spaceDragTarget = tabs.spaces[index + step].id
+        } else {
+            model.spaceDragTarget = nil
+        }
+        model.spaceDragProgress = progress
         // Arms past the threshold, disarms only well below it, so finger jitter at the edge doesn't
-        // flip it back and forth. One tick when it arms is the swipe's only haptic.
-        let armed = swipeTarget(for: raw) != nil && abs(offset) >= (swipeCrossed ? swipeThreshold * 0.7 : swipeThreshold)
-        if armed && !swipeCrossed { Haptics.snap() }
+        // flip it back and forth.
+        let armed = step != nil && abs(offset) >= (swipeCrossed ? swipeThreshold * 0.7 : swipeThreshold)
+        // Haptics, each once per crossing and each with its own meaning: the snap when it arms, a light tick when it lets
+        // go again, a light bump when the swipe runs out of spaces. Only landing in a new space is a "step" (below).
+        if step == nil, abs(raw) > 40, !swipeHitEdge {
+            swipeHitEdge = true
+            Haptics.tap()
+        }
+        if armed && !swipeCrossed { Haptics.snap() } else if !armed && swipeCrossed { Haptics.tap() }
         swipeCrossed = armed
     }
+
+    private static var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 
     private func finishSwipe(cancelled: Bool) {
         let offset = swipeDelta.width
@@ -268,15 +289,22 @@ public final class BrowserWindowController: NSWindowController, NSWindowDelegate
             // One animated update: the new space and the offset returning to 0 land together, so the
             // old list keeps moving from where the fingers left it instead of jumping back first.
             // (The sidebar model normally refreshes a run-loop turn later; here it must not.)
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) {
+            // The target stays set while the progress eases to 0: the tint then holds the new space's color throughout.
+            withAnimation(Self.reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.34, dampingFraction: 0.82)) {
                 tabs.switchSpace(by: step)
                 model.refresh(from: tabs)
                 model.spaceDragOffset = 0
+                model.spaceDragProgress = 0
             }
+            Haptics.step() // landing in the new space
         } else {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { model.spaceDragOffset = 0 }
+            withAnimation(Self.reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.3, dampingFraction: 0.8)) {
+                model.spaceDragOffset = 0
+                model.spaceDragProgress = 0
+            }
         }
         swipeCrossed = false
+        swipeHitEdge = false
     }
 
     @available(*, unavailable)
