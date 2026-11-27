@@ -28,7 +28,7 @@ final class ExtensionManager: NSObject, WKWebExtensionControllerDelegate {
     /// Sensitive sites (a bank, say): no extension reads them except `sensitiveSiteExtensions`.
     @ObservationIgnored var siteSettings: SiteSettings? { didSet { applySensitiveSites() } }
     /// Chrome Web Store IDs of password managers that stay active on sensitive sites (1Password).
-    static let sensitiveSiteExtensions: Set<String> = ["aeblfdkhhhdcdjpifhhbdiojplfjncoa"]
+    static var sensitiveSiteExtensions: Set<String> { ExtensionLibrary.sensitiveSiteExtensions }
     /// The patterns denied per extension, so a site that stops being sensitive can be released.
     @ObservationIgnored private var observingSites = false
     @ObservationIgnored private var deniedPatterns: [String: Set<String>] = [:]
