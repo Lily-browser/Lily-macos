@@ -84,6 +84,7 @@ enum MainMenu {
         m.addItem(item("Reopen Closed Tab", #selector(BrowserWindowController.reopenClosedTab(_:)), "t", [.command, .shift]))
         m.addItem(.separator())
         m.addItem(item("Copy Link", #selector(BrowserWindowController.copyPageURL(_:)), "c", [.command, .shift]))
+        m.addItem(item("Copy Page as Portrait", #selector(BrowserWindowController.copyPortrait(_:))))
         m.addItem(.separator())
         m.addItem(item("Print…", #selector(BrowserWindowController.printPage(_:)), "p"))
         return m
