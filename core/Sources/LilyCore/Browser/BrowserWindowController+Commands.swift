@@ -120,7 +120,7 @@ extension BrowserWindowController: NSMenuItemValidation, NSToolbarItemValidation
 
     @objc public func copyPageURL(_ sender: Any?) {
         guard let url = tabs.active?.url else { return }
-        Clipboard.copy(LinkTracking.cleaned(url).absoluteString, sensitive: isPrivate)
+        Clipboard.copy(LinkTracking.cleaned(url).absoluteString, sensitive: isPrivate || isSensitive(url))
         model.showToast("Link copied")
     }
 

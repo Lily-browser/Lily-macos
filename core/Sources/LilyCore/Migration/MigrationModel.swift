@@ -166,9 +166,15 @@ final class MigrationModel {
         if let tabs = destination.tabs(), !spaces.isEmpty {
             for (index, imported) in spaces.enumerated() {
                 let space = tabs.addSpace(name: imported.name, symbol: "square.stack", color: Self.spaceColors[index % Self.spaceColors.count], activate: false)
-                for tab in imported.tabs { tabs.createAsleep(url: URLNormalizer.clean(tab.url) ?? tab.url, title: tab.title, pinned: tab.pinned, in: space.id) }
+                // A tab whose address doesn't clean to an importable web address is skipped, never opened as it was.
+                var created = 0
+                for tab in imported.tabs {
+                    guard let url = URLNormalizer.clean(tab.url) else { continue }
+                    tabs.createAsleep(url: url, title: tab.title, pinned: tab.pinned, in: space.id)
+                    created += 1
+                }
                 summary.spaces += 1
-                summary.tabs += imported.tabs.count
+                summary.tabs += created
             }
         }
         Log.app.info("Import finished: \(summary.bookmarks, privacy: .public) bookmarks, \(summary.history, privacy: .public) history entries, \(summary.tabs, privacy: .public) tabs from \(summary.browsers.count, privacy: .public) browsers")
