@@ -124,6 +124,22 @@ extension BrowserWindowController: NSMenuItemValidation, NSToolbarItemValidation
         model.showToast("Link copied")
     }
 
+    /// Copies the visible page as a framed image (Portrait). Never from a private window or a sensitive site.
+    @objc public func copyPortrait(_ sender: Any?) {
+        guard !isPrivate, let tab = tabs.active, tab.hasWebView, !isSensitive(tab.url) else { return }
+        let web = tab.webView
+        web.takeSnapshot(with: nil) { [weak self] image, _ in
+            MainActor.assumeIsolated {
+                guard let self, let image, let png = Portrait.png(Portrait.image(of: image)) else { return }
+                let pasteboard = NSPasteboard.general
+                pasteboard.clearContents()
+                pasteboard.setData(png, forType: .png)
+                self.model.showToast("Portrait copied")
+                Haptics.tap()
+            }
+        }
+    }
+
     @objc public func printPage(_ sender: Any?) {
         guard let web = tabs.active?.webView, let window else { return }
         let operation = web.printOperation(with: .shared)
@@ -339,6 +355,7 @@ extension BrowserWindowController: NSMenuItemValidation, NSToolbarItemValidation
         case #selector(reloadPage(_:)), #selector(hardReloadPage(_:)), #selector(copyPageURL(_:)), #selector(printPage(_:)),
              #selector(zoomIn(_:)), #selector(zoomOut(_:)), #selector(actualSize(_:)), #selector(summarizePage(_:)):
             return tabs.active != nil
+        case #selector(copyPortrait(_:)): return !isPrivate && tabs.active?.hasWebView == true && !isSensitive(tabs.active?.url)
         case #selector(togglePinTab(_:)):
             item.title = tabs.active?.isPinned == true ? "Unpin Tab" : "Pin Tab"
             return tabs.active != nil
