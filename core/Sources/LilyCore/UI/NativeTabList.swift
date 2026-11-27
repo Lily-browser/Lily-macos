@@ -27,6 +27,15 @@ struct NativeTabList: NSViewRepresentable {
 /// The table, so the self-test can find it among the window's views.
 final class TabListTableView: NSTableView {}
 
+/// Scroll view of the tab list. A scroll view can take over a trackpad gesture once it starts, so the window's local
+/// monitor never sees the rest of it; the events are handed to the window's space swipe from here too.
+final class TabListScrollView: NSScrollView {
+    override func scrollWheel(with event: NSEvent) {
+        if let controller = window?.windowController as? BrowserWindowController, controller.handleSpaceSwipe(event) { return }
+        super.scrollWheel(with: event)
+    }
+}
+
 /// A row's selection pill: the list's own shape (`SidebarPill`), in a neutral selection color with the user's accent over it.
 final class TabListRowView: NSTableRowView {
     var accent = NSColor.controlAccentColor
@@ -70,7 +79,7 @@ final class HostingCell: NSTableCellView {
 
 @MainActor
 final class NativeTabListController: NSObject, NSTableViewDataSource, NSTableViewDelegate {
-    let scrollView = NSScrollView()
+    let scrollView = TabListScrollView()
     let table = TabListTableView()
     private let window: WindowModel
     private var props: NativeTabList?

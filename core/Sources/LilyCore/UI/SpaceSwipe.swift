@@ -19,9 +19,9 @@ enum SpaceSwipe {
         let p = min(1, abs(offset) / fullDepth)
         let eased = p * p * (3 - 2 * p) // smoothstep: gentle start, gentle end
         let direction: Double = offset < 0 ? -1 : 1
-        let fade = 1 - min(0.35, abs(offset) / 500)
+        let fade = 1 - min(0.2, abs(offset) / 800)
         if reduceMotion { return Depth(scale: 1, tilt: 0, opacity: fade, anchor: .center) }
-        return Depth(scale: 1 - 0.07 * eased, tilt: direction * 14 * Double(eased), opacity: fade,
+        return Depth(scale: 1 - 0.03 * eased, tilt: direction * 5 * Double(eased), opacity: fade,
                      anchor: offset < 0 ? .leading : .trailing)
     }
 

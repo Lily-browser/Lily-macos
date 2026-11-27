@@ -184,7 +184,7 @@ public final class BrowserWindowController: NSWindowController, NSWindowDelegate
     /// the tab list doesn't scroll at the same time.
     private func installSpaceSwipe() {
         swipeMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
-            let consumed = MainActor.assumeIsolated { self?.handleSwipe(event) ?? false }
+            let consumed = MainActor.assumeIsolated { self?.handleSpaceSwipe(event) ?? false }
             return consumed ? nil : event
         }
     }
@@ -193,6 +193,18 @@ public final class BrowserWindowController: NSWindowController, NSWindowDelegate
 
     /// Interactive space swipe: the tab list follows the fingers; past the threshold it switches,
     /// otherwise it springs back. Returns true when the event belongs to the swipe.
+    func handleSpaceSwipe(_ event: NSEvent) -> Bool {
+        // The same event can arrive twice (the monitor, then the tab list's scroll view): count it once.
+        if event.timestamp == lastSwipeStamp, event.phase == lastSwipePhase, event.momentumPhase == lastSwipeMomentum { return lastSwipeResult }
+        lastSwipeStamp = event.timestamp; lastSwipePhase = event.phase; lastSwipeMomentum = event.momentumPhase
+        lastSwipeResult = handleSwipe(event)
+        return lastSwipeResult
+    }
+    private var lastSwipeStamp: TimeInterval = 0
+    private var lastSwipePhase: NSEvent.Phase = []
+    private var lastSwipeMomentum: NSEvent.Phase = []
+    private var lastSwipeResult = false
+
     private func handleSwipe(_ event: NSEvent) -> Bool {
         guard event.window === window, event.hasPreciseScrollingDeltas else { return false }
         // Momentum after a swipe ends must not scroll the (new) list or trigger another switch.

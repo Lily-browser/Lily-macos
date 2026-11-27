@@ -30,7 +30,7 @@ struct SidebarView: View {
                     }
                     .id(window.currentSpaceID)
                     // The next space slides in from its side and settles up from slightly back; with Reduce Motion it fades.
-                    .transition(reduceMotion ? .opacity : .push(from: window.spaceForward ? .trailing : .leading).combined(with: .scale(scale: 0.95)))
+                    .transition(reduceMotion ? .opacity : .push(from: window.spaceForward ? .trailing : .leading))
                 }
                 // Depth: while dragging, the list recedes (smaller, tilted away), pivoting on the edge it moves toward.
                 .scaleEffect(depth.scale, anchor: depth.anchor)
