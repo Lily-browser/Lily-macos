@@ -44,6 +44,59 @@ final class BrowserWebView: WKWebView {
         "WKMenuItemIdentifierInspectElement": (nil, "hammer"),
     ]
 
+    // MARK: Swipe diagnostics (#160)
+
+    private var swipeProbePending = false
+
+    /// A horizontal two-finger gesture may be WebKit's back/forward swipe. The gray page of #160 can't be seen from outside,
+    /// so a gesture that looks like a swipe logs, once, what is on screen: WebKit's swipe layers and whether their snapshot
+    /// holds an image, then the layers around the web view. Counts and sizes only, never page content. Event driven: nothing
+    /// runs unless a horizontal gesture starts.
+    override func scrollWheel(with event: NSEvent) {
+        super.scrollWheel(with: event)
+        guard !swipeProbePending, event.hasPreciseScrollingDeltas, event.phase == .began || event.phase == .changed,
+              abs(event.scrollingDeltaX) > 4, abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY) * 1.5 else { return }
+        swipeProbePending = true
+        Task { @MainActor [weak self] in
+            for stage in ["150 ms", "600 ms"] {
+                try? await Task.sleep(for: .milliseconds(stage == "150 ms" ? 150 : 450))
+                self?.logSwipeLayers(stage: stage)
+            }
+            self?.swipeProbePending = false
+        }
+    }
+
+    @discardableResult
+    func logSwipeLayers(stage: String) -> String {
+        func color(_ layer: CALayer) -> String {
+            guard let cg = layer.backgroundColor, let c = NSColor(cgColor: cg)?.usingColorSpace(.sRGB) else { return "none" }
+            return "\(Int(c.redComponent * 255)),\(Int(c.greenComponent * 255)),\(Int(c.blueComponent * 255))"
+        }
+        var found: [String] = []
+        func walk(_ layer: CALayer, _ depth: Int) {
+            if let name = layer.name, name.hasPrefix("Gesture Swipe") {
+                found.append("\(name.dropFirst(14)) \(Int(layer.bounds.width))x\(Int(layer.bounds.height)) image=\(layer.contents != nil) hidden=\(layer.isHidden) alpha=\(layer.opacity) bg=\(color(layer))")
+            }
+            if depth < 5 { for sub in layer.sublayers ?? [] { walk(sub, depth + 1) } }
+        }
+        if let layer { walk(layer, 0) }
+        guard !found.isEmpty else {
+            Log.web.info("Horizontal gesture (\(stage, privacy: .public)): no swipe layers")
+            return "no swipe layers"
+        }
+        var chain: [String] = []
+        var view: NSView? = self
+        while let v = view, chain.count < 5 {
+            let l = v.layer
+            chain.append("\(String(describing: type(of: v)).split(separator: ".").last ?? "") \(Int(v.frame.width))x\(Int(v.frame.height)) mask=\(l?.masksToBounds == true) radius=\(Int(l?.cornerRadius ?? 0)) bg=\(l.map { color($0) } ?? "none")")
+            view = v.superview
+        }
+        let history = "back \(backForwardList.backList.count) forward \(backForwardList.forwardList.count)"
+        let line = "Swipe (\(stage)), \(history); swipe layers: \(found.joined(separator: " | ")); views: \(chain.joined(separator: " < "))"
+        Log.web.notice("\(line, privacy: .public)")
+        return line
+    }
+
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         super.willOpenMenu(menu, with: event)
         // Last of all, so the items Lily adds below can be hidden too (also on the early return).
